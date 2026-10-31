@@ -2,3 +2,4 @@
 .local/
 web/vite-preview.log
 scripts/__pycache__/
+**/__pycache__/
