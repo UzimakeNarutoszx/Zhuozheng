@@ -1,0 +1,9 @@
+{
+  "generatedAt": "2026-10-31",
+  "policy": "正式图片只使用已记录来源和许可的本地副本，运行时不请求远程图片。",
+  "assets": [
+    {"file":"assets/garden/garden-001.jpg","sourcePage":"https://commons.wikimedia.org/wiki/File:Humble_Administrator%27s_Garden_Suzhou_November_2017_001.jpg","author":"King of Hearts","license":"CC BY-SA 4.0","downloaded":"2026-10-31"},
+    {"file":"assets/garden/garden-002.jpg","sourcePage":"https://commons.wikimedia.org/wiki/File:Humble_Administrator%27s_Garden_Suzhou_November_2017_002.jpg","author":"King of Hearts","license":"CC BY-SA 4.0","downloaded":"2026-10-31"},
+    {"file":"assets/garden/garden-003.jpg","sourcePage":"https://commons.wikimedia.org/wiki/File:Humble_Administrator%27s_Garden_Suzhou_November_2017_003.jpg","author":"King of Hearts","license":"CC BY-SA 4.0","downloaded":"2026-10-31"}
+  ]
+}

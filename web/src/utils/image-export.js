@@ -1,0 +1,2 @@
+export function downloadCanvas(canvas, filename = '我的园林取景.png') { const link = document.createElement('a'); link.download = filename; link.href = canvas.toDataURL('image/png'); link.click() }
+export function fitImage(image, canvasWidth, canvasHeight) { const scale = Math.max(canvasWidth / image.width, canvasHeight / image.height); return { scale, width: image.width * scale, height: image.height * scale } }
