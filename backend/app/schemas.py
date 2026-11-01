@@ -71,6 +71,32 @@ class ImportRequest(BaseModel):
     works: list[WorkRequest] = Field(max_length=24)
 
 
+class CommentRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=500)
+
+    @field_validator('content')
+    @classmethod
+    def nonempty(cls, value):
+        if not value.strip():
+            raise ValueError('评论不能为空')
+        return value.strip()
+
+
+class ReportRequest(BaseModel):
+    targetType: Literal['work', 'comment']
+    targetId: str = Field(min_length=1, max_length=32, pattern=r'^[\w-]+$')
+    reason: str = Field(min_length=1, max_length=200)
+
+
+class ReviewRequest(BaseModel):
+    action: Literal['approve', 'reject']
+    reason: str = Field(default='', max_length=200)
+
+
+class ResolveRequest(BaseModel):
+    action: Literal['dismiss', 'remove'] = 'dismiss'
+
+
 class HistoryMessage(BaseModel):
     role: Literal['user', 'assistant']
     content: str = Field(min_length=1, max_length=4000)

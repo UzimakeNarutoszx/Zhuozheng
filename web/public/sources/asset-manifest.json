@@ -2,8 +2,66 @@
   "generatedAt": "2026-10-31",
   "policy": "正式图片只使用已记录来源和许可的本地副本，运行时不请求远程图片。",
   "assets": [
-    {"file":"assets/garden/garden-001.jpg","sourcePage":"https://commons.wikimedia.org/wiki/File:Humble_Administrator%27s_Garden_Suzhou_November_2017_001.jpg","author":"King of Hearts","license":"CC BY-SA 4.0","downloaded":"2026-10-31"},
-    {"file":"assets/garden/garden-002.jpg","sourcePage":"https://commons.wikimedia.org/wiki/File:Humble_Administrator%27s_Garden_Suzhou_November_2017_002.jpg","author":"King of Hearts","license":"CC BY-SA 4.0","downloaded":"2026-10-31"},
-    {"file":"assets/garden/garden-003.jpg","sourcePage":"https://commons.wikimedia.org/wiki/File:Humble_Administrator%27s_Garden_Suzhou_November_2017_003.jpg","author":"King of Hearts","license":"CC BY-SA 4.0","downloaded":"2026-10-31"}
+    {
+      "file": "assets/garden/garden-001.jpg",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File:Humble_Administrator%27s_Garden_Suzhou_November_2017_001.jpg",
+      "author": "King of Hearts",
+      "license": "CC BY-SA 4.0",
+      "downloaded": "2026-10-31"
+    },
+    {
+      "file": "assets/garden/garden-002.jpg",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File:Humble_Administrator%27s_Garden_Suzhou_November_2017_002.jpg",
+      "author": "King of Hearts",
+      "license": "CC BY-SA 4.0",
+      "downloaded": "2026-10-31"
+    },
+    {
+      "file": "assets/garden/garden-003.jpg",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File:Humble_Administrator%27s_Garden_Suzhou_November_2017_003.jpg",
+      "author": "King of Hearts",
+      "license": "CC BY-SA 4.0",
+      "downloaded": "2026-10-31"
+    },
+    {
+      "file": "assets/garden/method-frame-hexagonal.jpg",
+      "title": "六边形窗",
+      "sourceFile": "江南研学/照片/11.18/DSC01467.JPG",
+      "author": "江南研学小组（未细分摄影者）",
+      "license": "小组提供用于本站，保留原作者权利；非开放许可",
+      "imported": "2026-11-01"
+    },
+    {
+      "file": "assets/garden/method-borrow-beisi.jpg",
+      "title": "北寺塔借景",
+      "sourceFile": "江南研学/照片/11.18/DSC01502.JPG",
+      "author": "江南研学小组（未细分摄影者）",
+      "license": "小组提供用于本站，保留原作者权利；非开放许可",
+      "imported": "2026-11-01"
+    },
+    {
+      "file": "assets/garden/method-opposition-waterfront.jpg",
+      "title": "隔水亭阁",
+      "sourceFile": "江南研学/照片/11.18/DSC01520.JPG",
+      "author": "江南研学小组（未细分摄影者）",
+      "license": "小组提供用于本站，保留原作者权利；非开放许可",
+      "imported": "2026-11-01"
+    },
+    {
+      "file": "assets/garden/method-leak-lattice.jpg",
+      "title": "花格漏窗",
+      "sourceFile": "江南研学/照片/11.18/DSC01507.JPG",
+      "author": "江南研学小组（未细分摄影者）",
+      "license": "小组提供用于本站，保留原作者权利；非开放许可",
+      "imported": "2026-11-01"
+    },
+    {
+      "file": "assets/garden/method-screen-zhuiyun.jpg",
+      "title": "缀云峰",
+      "sourceFile": "江南研学/照片/11.18/DSC01472.JPG",
+      "author": "江南研学小组（未细分摄影者）",
+      "license": "小组提供用于本站，保留原作者权利；非开放许可",
+      "imported": "2026-11-01"
+    }
   ]
 }

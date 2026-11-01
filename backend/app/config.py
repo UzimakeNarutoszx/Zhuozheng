@@ -25,6 +25,10 @@ class Settings:
     ai_model = os.getenv('AI_MODEL', 'deepseek-flash')
     ai_timeout = float(os.getenv('AI_TIMEOUT_SECONDS', '180'))
     daily_limit = int(os.getenv('AI_DAILY_QUESTION_LIMIT', '20'))
+    admin_phones = {item.strip() for item in os.getenv('ADMIN_PHONES', '').split(',') if item.strip()}
+    media_dir = Path(os.getenv('MEDIA_DIR') or DATA / 'media')
+    # Comments containing these words wait for review; extend locally via SENSITIVE_WORDS.
+    sensitive_words = {'赌博', '色情', '代开发票', '加微信', '刷单', '博彩', *(item.strip() for item in os.getenv('SENSITIVE_WORDS', '').split(',') if item.strip())}
 
 
 settings = Settings()

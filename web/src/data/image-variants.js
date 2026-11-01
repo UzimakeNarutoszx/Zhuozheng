@@ -42,6 +42,76 @@ export const imageVariants = {
       "width": 1600
     }
   ],
+  "/assets/garden/method-borrow-beisi.jpg": [
+    {
+      "src": "/assets/optimized/garden/method-borrow-beisi-480.webp",
+      "width": 480
+    },
+    {
+      "src": "/assets/optimized/garden/method-borrow-beisi-960.webp",
+      "width": 960
+    },
+    {
+      "src": "/assets/optimized/garden/method-borrow-beisi-1600.webp",
+      "width": 1600
+    }
+  ],
+  "/assets/garden/method-frame-hexagonal.jpg": [
+    {
+      "src": "/assets/optimized/garden/method-frame-hexagonal-480.webp",
+      "width": 480
+    },
+    {
+      "src": "/assets/optimized/garden/method-frame-hexagonal-960.webp",
+      "width": 960
+    },
+    {
+      "src": "/assets/optimized/garden/method-frame-hexagonal-1080.webp",
+      "width": 1080
+    }
+  ],
+  "/assets/garden/method-leak-lattice.jpg": [
+    {
+      "src": "/assets/optimized/garden/method-leak-lattice-480.webp",
+      "width": 480
+    },
+    {
+      "src": "/assets/optimized/garden/method-leak-lattice-960.webp",
+      "width": 960
+    },
+    {
+      "src": "/assets/optimized/garden/method-leak-lattice-1600.webp",
+      "width": 1600
+    }
+  ],
+  "/assets/garden/method-opposition-waterfront.jpg": [
+    {
+      "src": "/assets/optimized/garden/method-opposition-waterfront-480.webp",
+      "width": 480
+    },
+    {
+      "src": "/assets/optimized/garden/method-opposition-waterfront-960.webp",
+      "width": 960
+    },
+    {
+      "src": "/assets/optimized/garden/method-opposition-waterfront-1600.webp",
+      "width": 1600
+    }
+  ],
+  "/assets/garden/method-screen-zhuiyun.jpg": [
+    {
+      "src": "/assets/optimized/garden/method-screen-zhuiyun-480.webp",
+      "width": 480
+    },
+    {
+      "src": "/assets/optimized/garden/method-screen-zhuiyun-960.webp",
+      "width": 960
+    },
+    {
+      "src": "/assets/optimized/garden/method-screen-zhuiyun-1080.webp",
+      "width": 1080
+    }
+  ],
   "/assets/jiangnan/photos/scene-01.jpg": [
     {
       "src": "/assets/optimized/jiangnan/photos/scene-01-480.webp",

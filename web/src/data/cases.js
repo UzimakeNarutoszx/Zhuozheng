@@ -1,5 +1,5 @@
 export const cases = [
-  { id: 'lotus-pavilion', methodId: 'borrow', title: '临水的远望', image: '/assets/garden/garden-002.jpg', caption: '亭、荷、水面和天空组成了一条连续的视线。', sourceId: 'commons-002' },
-  { id: 'garden-path', methodId: 'frame', title: '窗口里的水院', image: '/assets/garden/garden-001.jpg', caption: '建筑的开口让视线从散开的景色中收拢。', sourceId: 'commons-001' },
-  { id: 'rock-water', methodId: 'opposition', title: '一桥相对', image: '/assets/garden/garden-003.jpg', caption: '曲折的路径让前后景物在移动中互相回应。', sourceId: 'commons-003' }
+  { id: 'lotus-pavilion', methodId: 'borrow', title: '把北寺塔借入园中', image: '/assets/garden/method-borrow-beisi.jpg', caption: '屋檐与树冠之间，园外的塔影延伸了园内的空间。', sourceId: 'field-borrow' },
+  { id: 'garden-path', methodId: 'frame', title: '一窗竹影', image: '/assets/garden/method-frame-hexagonal.jpg', caption: '六边形窗裁出竹叶，白墙让框内的景色更集中。', sourceId: 'field-frame' },
+  { id: 'rock-water', methodId: 'opposition', title: '隔水看亭阁', image: '/assets/garden/method-opposition-waterfront.jpg', caption: '从近处石岸望向对岸，亭阁成为视线的落点。', sourceId: 'field-opposition' }
 ]

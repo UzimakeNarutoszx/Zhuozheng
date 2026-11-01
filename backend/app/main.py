@@ -5,15 +5,15 @@ from datetime import datetime
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .config import settings
 from .db import AiRecord, Base, SessionLocal, SmsCode, Usage, User, Work, engine, get_db
 from .schemas import AskRequest, ImportRequest, LoginRequest, RegisterRequest, ResetRequest, SmsRequest, WorkRequest
-from .security import create_token, decode_token, hash_password, limiter, verify_password
-from . import services
+from .security import create_token, hash_password, limiter, verify_password
+from .deps import current_user, is_admin
+from . import community, services
 
 
 @asynccontextmanager
@@ -25,7 +25,7 @@ async def lifespan(_):
 app = FastAPI(title='拙政观景 API', lifespan=lifespan)
 # Development normally uses Vite's same-origin proxy; explicit origins also allow a local preview.
 app.add_middleware(CORSMiddleware, allow_origins=['http://127.0.0.1:5174', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://localhost:5173'], allow_methods=['*'], allow_headers=['*'])
-bearer = HTTPBearer(auto_error=False)
+app.include_router(community.router)
 
 
 @app.middleware('http')
@@ -35,20 +35,13 @@ async def private_responses(request, call_next):
         from fastapi.responses import JSONResponse
         return JSONResponse({'detail': '上传内容过大'}, status_code=413)
     response = await call_next(request)
-    response.headers['Cache-Control'] = 'no-store'
+    # Media routes set their own cache policy; everything else stays private.
+    response.headers.setdefault('Cache-Control', 'no-store')
     return response
 
 
-def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer), db: Session = Depends(get_db)):
-    payload = decode_token(credentials.credentials) if credentials else None
-    user = db.get(User, payload['sub']) if payload else None
-    if not user or user.token_version != payload.get('tv', 0):
-        raise HTTPException(401, '登录已过期，请重新登录')
-    return user
-
-
 def user_json(user):
-    return {'id': user.id, 'phone': user.phone, 'nickname': user.nickname, 'created_at': user.created_at.isoformat()}
+    return {'id': user.id, 'phone': user.phone, 'nickname': user.nickname, 'created_at': user.created_at.isoformat(), 'role': 'admin' if is_admin(user) else 'user'}
 
 
 def auth_json(user):
@@ -143,7 +136,8 @@ def profile(user: User = Depends(current_user), db: Session = Depends(get_db)):
 
 @app.get('/api/v1/profile/works')
 def list_works(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    return [json.loads(row.payload) for row in db.scalars(select(Work).where(Work.user_id == user.id).order_by(Work.updated_at.desc()))]
+    state = community.community_state(db, user.id)
+    return [{**json.loads(row.payload), **community.state_fields(state.get(row.work_id))} for row in db.scalars(select(Work).where(Work.user_id == user.id).order_by(Work.updated_at.desc()))]
 
 
 def upsert_work(db, user_id, payload, *, only_new=False):
@@ -173,6 +167,7 @@ def import_works(payload: ImportRequest, user: User = Depends(current_user), db:
 def save_work(payload: WorkRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
     upsert_work(db, user.id, payload)
     db.commit()
+    community.on_work_saved(db, user.id, payload.id, payload.model_dump())
     return payload.model_dump()
 
 
@@ -193,6 +188,7 @@ def get_work(work_id: str, user: User = Depends(current_user), db: Session = Dep
 
 @app.delete('/api/v1/profile/works/{work_id}')
 def remove_work(work_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    community.on_work_deleted(db, user.id, work_id)
     result = db.execute(delete(Work).where(Work.user_id == user.id, Work.work_id == work_id))
     db.commit()
     if not result.rowcount:
@@ -202,7 +198,7 @@ def remove_work(work_id: str, user: User = Depends(current_user), db: Session = 
 
 @app.get('/api/v1/content/ask/bootstrap')
 def bootstrap():
-    return {'prompts': services.PROMPTS, 'followups': ['给我一个现场观察的小练习', '带我去相关页面'], 'welcome_message': '我是梅梅。你可以问我如何使用拙政观景，也可以一起聊聊拙政园与五种造景手法。'}
+    return {'prompts': services.PROMPTS, 'followups': ['给我一个现场观察的小练习', '带我去相关页面'], 'welcome_message': '我是梅梅，形象源自江南研学中同学原创设计的“梅花多边形窗框”。你可以问我设计的来历、如何使用拙政观景，也可以一起聊聊拙政园与五种造景手法。'}
 
 
 @app.post('/api/v1/content/ask')
