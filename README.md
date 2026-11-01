@@ -1,18 +1,20 @@
-# 拙政观景 · 公开示意版
-
-> 本仓库保留原始开发工程。以下介绍、截图和视频对应经过隐私清理的公开展示版，公开版素材与原始开发资料分开管理
+# 拙政观景
 
 用交互网页理解拙政园的框景、借景、对景、漏景和障景。包含观察点地图、案例阅读、花窗构图创作、抽象花窗助手，以及可选的账户、园友社区与 AI 问答后端。
 
-本版本为隐私清理后的完整应用源码：原实拍、学生作品和私人研究文档均未包含；配图和动景改为程序绘制的无人物示意，不能视作拙政园实景资料。
+**[访问已部署产品](http://8.147.110.194/garden/)**。以下截图来自云服务器正式页面，展示完成部署的产品。
 
-![首页](docs/media/home.png)
+![云端正式产品首页](docs/media/cloud-home.png)
 
-![五种造景手法](docs/media/methods.png)
+![云端正式产品的五种造景手法](docs/media/cloud-methods.png)
 
-![构图创作](docs/media/studio.png)
+![云端正式产品的构图创作](docs/media/cloud-studio.png)
 
-[观看界面演示视频](docs/media/demo.mp4)（真实公开版界面截图轮播，无音轨，不是连续操作录像）。
+[![观看拙政观景正式宣传片 v2](docs/media/promo-v2-poster.jpg)](https://github.com/UzimakeNarutoszx/personal-website-oss/releases/download/public-editions-2026-11-01/zhuozheng-promo-v2.mp4)
+
+点击缩略图观看 **v2 有声宣传片：30 秒、1080 × 1920**。视频由 Release 提供，原始视频未放入 Git。
+
+本仓库提供隐私清理后的应用源码，与正式部署产品的媒体资源有所不同：源码随附配图和动景改为程序绘制的无人物示意，原实拍、学生作品、私人研究文档及原角色 GLB 未包含。正式产品截图和宣传片用于展示已部署成果，不代表这些媒体也包含在源码许可中。媒体来源与隐私边界见 [docs/MEDIA.md](docs/MEDIA.md)。
 
 ## 运行
 
@@ -42,7 +44,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8011
 - `web/src`：Vue 3 单页应用、Hash 路由、Leaflet 地图、花窗 SVG 示意、Canvas 图片导出、本机作品存储。
 - `backend/app`：FastAPI、SQLAlchemy/SQLite、账户与短信适配、流式 AI、社区审核与媒体接口。
 - `blender`：花窗模型和动景构建脚本；需单独安装 Blender，运行主应用不需要它。
-- `web/public`：公开版无人物示意资源；`docs/media` 为本版 UI 截图及视频。
+- `web/public`：清理源码使用的无人物示意资源；`docs/media` 保存正式产品展示截图、宣传片缩略图及早期清理版演示。
 
 ## 验证与限制
 
