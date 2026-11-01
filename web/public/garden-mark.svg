@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">拙政观景标志</title><desc id="desc">一扇窗框住水面与远山</desc>
+  <rect width="96" height="96" rx="22" fill="#173a36"/>
+  <path d="M22 22h52v52H22z" fill="#f5f0e5" stroke="#ba8d50" stroke-width="5"/>
+  <path d="M27 59c11-11 18-13 25-6 8 8 13 2 17-5 3 5 5 8 5 17H27z" fill="#9c4d35"/>
+  <path d="M27 65c10-4 19-4 28 0 7 3 13 3 19 0v9H27z" fill="#6faaa0"/>
+  <path d="M35 39l11-11 15 11" fill="none" stroke="#173a36" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
