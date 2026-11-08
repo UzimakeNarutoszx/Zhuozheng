@@ -92,6 +92,14 @@ class Like(Base):
     user_id: Mapped[int] = mapped_column(index=True)
 
 
+class Favorite(Base):
+    __tablename__ = 'community_favorites'
+    __table_args__ = (UniqueConstraint('post_id', 'user_id'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    post_id: Mapped[int] = mapped_column(index=True)
+    user_id: Mapped[int] = mapped_column(index=True)
+
+
 class Comment(Base):
     __tablename__ = 'community_comments'
     id: Mapped[int] = mapped_column(primary_key=True)

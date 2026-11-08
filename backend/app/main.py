@@ -56,12 +56,13 @@ def health(db: Session = Depends(get_db)):
 
 @app.post('/api/v1/auth/send-sms')
 def send_sms(payload: SmsRequest, request: Request, db: Session = Depends(get_db)):
+    # The IP limit runs before the existence check, so 409/404 answers cannot be used to probe numbers.
+    limiter.consume('sms-ip:' + (request.client.host if request.client else 'unknown'), 30, 3600)
     user = db.scalar(select(User).where(User.phone == payload.phone))
     if payload.scene == 'register' and user:
         raise HTTPException(409, '手机号已注册')
     if payload.scene == 'reset_password' and not user:
         raise HTTPException(404, '手机号未注册')
-    limiter.consume('sms-ip:' + (request.client.host if request.client else 'unknown'), 30, 3600)
     limiter.consume('sms-minute:' + payload.phone, 1, 60)
     limiter.consume('sms-day:' + payload.phone, 10, 86400)
     services.send_sms(payload.phone, payload.scene)
@@ -115,7 +116,8 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
 
 
 @app.post('/api/v1/auth/forgot-password')
-def forgot_password(payload: ResetRequest, db: Session = Depends(get_db)):
+def forgot_password(payload: ResetRequest, request: Request, db: Session = Depends(get_db)):
+    limiter.consume('sms-ip:' + (request.client.host if request.client else 'unknown'), 30, 3600)
     user = db.scalar(select(User).where(User.phone == payload.phone))
     if not user:
         raise HTTPException(404, '手机号未注册')

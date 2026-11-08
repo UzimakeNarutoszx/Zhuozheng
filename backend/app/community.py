@@ -11,10 +11,11 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .config import settings
-from .db import Comment, Like, Post, Report, User, Work, get_db
+from .db import Comment, Favorite, Like, Post, Report, User, Work, get_db
 from .deps import admin_user, current_user, is_admin, optional_user
 from .schemas import CommentRequest, ReportRequest, ResolveRequest, ReviewRequest
 from .security import limiter
+from .moderation import comment_is_safe
 
 router = APIRouter()
 METHODS = {'frame', 'borrow', 'opposition', 'leak', 'screen'}
@@ -54,16 +55,18 @@ def write_media(data_url):
 
 
 @router.get('/api/v1/media/{kind}/{name}')
-def media(kind: str, name: str, db: Session = Depends(get_db)):
+def media(kind: str, name: str, viewer: User | None = Depends(optional_user), db: Session = Depends(get_db)):
     key = name.removesuffix('.webp')
     if kind not in MEDIA_SIZES or not name.endswith('.webp') or len(key) != 32 or not key.isalnum():
         raise HTTPException(404, '图片不存在')
     # Keys are unguessable; only works submitted to the community have them.
     post = db.scalar(select(Post).where(Post.media_key == key, Post.status != 'private'))
-    if not post or not media_path(kind, key).exists():
+    # Unreviewed or rejected media stays with the author and admins only.
+    preview = post and post.status != 'approved' and viewer and (viewer.id == post.user_id or is_admin(viewer))
+    if not post or (post.status != 'approved' and not preview) or not media_path(kind, key).exists():
         raise HTTPException(404, '图片不存在')
-    max_age = 'public, max-age=31536000, immutable' if post.status == 'approved' else 'private, max-age=60'
-    return FileResponse(media_path(kind, key), media_type='image/webp', headers={'Cache-Control': max_age})
+    cache = 'public, max-age=86400' if post.status == 'approved' else 'private, no-store'
+    return FileResponse(media_path(kind, key), media_type='image/webp', headers={'Cache-Control': cache})
 
 
 # ---------- shared helpers ----------
@@ -81,18 +84,24 @@ def iso_ms(value):
     return datetime.fromtimestamp(value / 1000, timezone.utc).isoformat().replace('+00:00', 'Z') if value else None
 
 
-def post_summary(post, author, liked):
-    return {'id': post.public_id, 'title': post.title or '未命名取景', 'methodId': post.method_id, 'thumbUrl': media_url('thumb', post.media_key), 'author': author_json(author), 'likeCount': post.like_count, 'commentCount': post.comment_count, 'likedByMe': liked, 'publishedAt': iso_ms(post.published_ts)}
+def post_summary(post, author, liked, favorite=False):
+    return {'id': post.public_id, 'title': post.title or '未命名取景', 'methodId': post.method_id, 'thumbUrl': media_url('thumb', post.media_key), 'author': author_json(author), 'likeCount': post.like_count, 'commentCount': post.comment_count, 'likedByMe': liked, 'favoritedByMe': favorite, 'publishedAt': iso_ms(post.published_ts)}
 
 
-def post_detail(post, author, liked):
-    return {**post_summary(post, author, liked), 'imageUrl': media_url('full', post.media_key), 'note': post.note, 'frameId': post.frame_id, 'reviewStatus': post.status, 'rejectReason': post.reject_reason if post.status == 'rejected' else ''}
+def post_detail(post, author, liked, favorite=False):
+    return {**post_summary(post, author, liked, favorite), 'imageUrl': media_url('full', post.media_key), 'note': post.note, 'frameId': post.frame_id, 'reviewStatus': post.status, 'rejectReason': post.reject_reason if post.status == 'rejected' else ''}
 
 
 def liked_ids(db, viewer, post_ids):
     if not viewer or not post_ids:
         return set()
     return set(db.scalars(select(Like.post_id).where(Like.user_id == viewer.id, Like.post_id.in_(post_ids))))
+
+
+def favorite_ids(db, viewer, post_ids):
+    if not viewer or not post_ids:
+        return set()
+    return set(db.scalars(select(Favorite.post_id).where(Favorite.user_id == viewer.id, Favorite.post_id.in_(post_ids))))
 
 
 def authors(db, user_ids):
@@ -153,6 +162,7 @@ def on_work_deleted(db, user_id, work_id):
     db.execute(delete(Report).where(or_((Report.target_type == 'work') & (Report.target_id == post.public_id), (Report.target_type == 'comment') & Report.target_id.in_(comment_ids))))
     db.execute(delete(Comment).where(Comment.post_id == post.id))
     db.execute(delete(Like).where(Like.post_id == post.id))
+    db.execute(delete(Favorite).where(Favorite.post_id == post.id))
     key = post.media_key
     db.delete(post)
     db.commit()
@@ -209,21 +219,55 @@ def feed(cursor: str = '', method: str = '', sort: str = Query('latest', pattern
     rows = list(db.scalars(query.order_by(primary.desc(), Post.id.desc()).limit(limit + 1)))
     page, more = rows[:limit], len(rows) > limit
     people, liked = authors(db, [p.user_id for p in page]), liked_ids(db, viewer, [p.id for p in page])
+    favorites = favorite_ids(db, viewer, [p.id for p in page])
     last = page[-1] if page else None
     next_cursor = f'{last.like_count if sort == "popular" else last.published_ts}.{last.id}' if more and last else None
-    return {'items': [post_summary(p, people.get(p.user_id), p.id in liked) for p in page], 'nextCursor': next_cursor}
+    return {'items': [post_summary(p, people.get(p.user_id), p.id in liked, p.id in favorites) for p in page], 'nextCursor': next_cursor}
 
 
 @router.get('/api/v1/community/works/{public_id}')
 def detail(public_id: str, viewer: User | None = Depends(optional_user), db: Session = Depends(get_db)):
     post = visible_post(db, public_id, viewer)
-    return post_detail(post, db.get(User, post.user_id), post.id in liked_ids(db, viewer, [post.id]))
+    return post_detail(post, db.get(User, post.user_id), post.id in liked_ids(db, viewer, [post.id]), post.id in favorite_ids(db, viewer, [post.id]))
+
+
+@router.get('/api/v1/profile/favorites')
+def favorites(cursor: int | None = Query(None, ge=1), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    query = select(Post, Favorite.id).join(Favorite, Favorite.post_id == Post.id).where(Favorite.user_id == user.id, Post.status == 'approved')
+    if cursor:
+        query = query.where(Favorite.id < cursor)
+    rows = db.execute(query.order_by(Favorite.id.desc()).limit(21)).all()
+    page = rows[:20]
+    people = authors(db, [p.user_id for p, _ in page])
+    liked = liked_ids(db, user, [p.id for p, _ in page])
+    return {'items': [post_summary(p, people.get(p.user_id), p.id in liked, True) for p, _ in page], 'nextCursor': page[-1][1] if len(rows) > 20 else None}
+
+
+@router.post('/api/v1/community/works/{public_id}/favorite')
+def favorite(public_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    post = visible_post(db, public_id, user, interact=True)
+    if not db.scalar(select(Favorite.id).where(Favorite.post_id == post.id, Favorite.user_id == user.id)):
+        db.add(Favorite(post_id=post.id, user_id=user.id))
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+    return {'favorited': True}
+
+
+@router.delete('/api/v1/community/works/{public_id}/favorite')
+def unfavorite(public_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    post = visible_post(db, public_id, user, interact=True)
+    db.execute(delete(Favorite).where(Favorite.post_id == post.id, Favorite.user_id == user.id))
+    db.commit()
+    return {'favorited': False}
 
 
 def like_state(db, post, liked):
-    # Recount from rows so concurrent likes cannot drift the cached counter.
-    post.like_count = db.scalar(select(func.count()).select_from(Like).where(Like.post_id == post.id))
+    # Recount in one UPDATE so concurrent likes cannot write a stale number back.
+    db.execute(update(Post).where(Post.id == post.id).values(like_count=select(func.count()).select_from(Like).where(Like.post_id == Post.id).scalar_subquery()))
     db.commit()
+    db.refresh(post)
     return {'liked': liked, 'likeCount': post.like_count}
 
 
@@ -277,8 +321,7 @@ def comments(public_id: str, cursor: int | None = Query(None, ge=1), viewer: Use
 def add_comment(public_id: str, payload: CommentRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
     limiter.consume(f'comment:{user.id}', 10, 60)
     post = visible_post(db, public_id, user, interact=True)
-    lowered = payload.content.lower()
-    status = 'pending' if any(word.lower() in lowered for word in settings.sensitive_words) else 'visible'
+    status = 'visible' if comment_is_safe(payload.content) else 'pending'
     comment = Comment(post_id=post.id, user_id=user.id, content=payload.content, status=status)
     db.add(comment)
     db.flush()
@@ -383,7 +426,8 @@ def resolve_report(report_id: int, payload: ResolveRequest = ResolveRequest(), _
     if payload.action == 'remove':
         if row.target_type == 'work':
             post = db.scalar(select(Post).where(Post.public_id == row.target_id))
-            if post and post.status == 'approved':
+            # A pending edit (re-submitted, not yet reviewed) is taken down too.
+            if post and post.status in {'approved', 'pending'}:
                 post.status, post.reject_reason = 'rejected', '因举报下架，修改后可重新发布'
         elif row.target_id.isdigit() and (comment := db.get(Comment, int(row.target_id))):
             comment.status = 'hidden'

@@ -3,6 +3,7 @@ import io
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 _temp = tempfile.TemporaryDirectory()
@@ -23,6 +24,11 @@ from app.security import limiter
 ADMIN = '13900000009'
 
 
+def screen(content):
+    # Same local rules as the real screener, without calling the AI endpoint.
+    return not any(word.lower() in content.lower() for word in settings.sensitive_words)
+
+
 def png(color='green', size=(40, 30)):
     output = io.BytesIO()
     Image.new('RGB', size, color).save(output, format='PNG')
@@ -37,6 +43,10 @@ class CommunityTests(unittest.TestCase):
         self.media = tempfile.TemporaryDirectory()
         self.saved = settings.admin_phones, settings.media_dir
         settings.admin_phones, settings.media_dir = {ADMIN}, Path(self.media.name)
+        # Never call the real AI endpoint from tests; each test may still override the verdict.
+        screening = patch('app.community.comment_is_safe', return_value=True)
+        self.comment_is_safe = screening.start()
+        self.addCleanup(screening.stop)
         self.client = TestClient(app)
         self.client.__enter__()
 
@@ -64,6 +74,23 @@ class CommunityTests(unittest.TestCase):
         result = self.client.post(f'/api/v1/admin/works/{public_id}/review', json={'action': 'approve'}, headers=admin)
         self.assertEqual(result.status_code, 200, result.text)
 
+    def test_favorites_are_private_idempotent_and_hide_withdrawn_works(self):
+        alice, bob, admin = self.register('13800000011'), self.register('13800000012'), self.register(ADMIN)
+        pid, _ = self.publish(alice)
+        self.approve(admin, pid)
+        path = f'/api/v1/community/works/{pid}/favorite'
+        self.assertEqual(self.client.post(path).status_code, 401)
+        self.assertEqual(self.client.post(path, headers=bob).json(), {'favorited': True})
+        self.assertEqual(self.client.post(path, headers=bob).json(), {'favorited': True})
+        self.assertTrue(self.client.get(f'/api/v1/community/works/{pid}', headers=bob).json()['favoritedByMe'])
+        self.assertFalse(self.client.get(f'/api/v1/community/works/{pid}', headers=alice).json()['favoritedByMe'])
+        self.assertEqual(len(self.client.get('/api/v1/profile/favorites', headers=bob).json()['items']), 1)
+        self.assertEqual(self.client.delete(path, headers=bob).json(), {'favorited': False})
+        self.assertEqual(self.client.get('/api/v1/profile/favorites', headers=bob).json()['items'], [])
+        self.client.post(path, headers=bob)
+        self.client.post('/api/v1/profile/works/w1/unpublish', headers=alice)
+        self.assertEqual(self.client.get('/api/v1/profile/favorites', headers=bob).json()['items'], [])
+
     def test_publish_review_feed_and_privacy(self):
         alice, bob, admin = self.register('13800000011', '小园'), self.register('13800000012'), self.register(ADMIN)
         self.assertEqual(self.client.get('/api/v1/profile/me', headers=admin).json()['role'], 'admin')
@@ -88,7 +115,7 @@ class CommunityTests(unittest.TestCase):
         thumb = self.client.get(detail['thumbUrl'])
         self.assertEqual(thumb.status_code, 200)
         self.assertEqual(thumb.headers['content-type'], 'image/webp')
-        self.assertIn('immutable', thumb.headers['cache-control'])
+        self.assertEqual(thumb.headers['cache-control'], 'public, max-age=86400')
         self.assertEqual(self.client.get('/api/v1/profile/me', headers=alice).headers['cache-control'], 'no-store')
         # Editing re-enters review with a new image; unpublishing removes media.
         _, work = self.publish(alice, 'w2', '第二幅', 'borrow')
@@ -138,8 +165,11 @@ class CommunityTests(unittest.TestCase):
         alice, bob, carol, admin = self.register('13800000016'), self.register('13800000017', '路人'), self.register('13800000018'), self.register(ADMIN)
         pid, _ = self.publish(alice)
         self.approve(admin, pid)
+        # Interface unchanged; assertions below show this is the seam the route actually calls.
+        self.comment_is_safe.side_effect = screen
         ok = self.client.post(f'/api/v1/community/works/{pid}/comments', json={'content': '  好看的窗  '}, headers=bob)
         self.assertEqual((ok.status_code, ok.json()['content'], ok.json()['status']), (201, '好看的窗', 'visible'))
+        self.assertEqual(self.comment_is_safe.call_count, 1)
         flagged = self.client.post(f'/api/v1/community/works/{pid}/comments', json={'content': '加微信看更多'}, headers=bob).json()
         self.assertEqual(flagged['status'], 'pending')
         self.assertEqual(len(self.client.get(f'/api/v1/community/works/{pid}/comments', headers=bob).json()['items']), 2)
@@ -164,6 +194,55 @@ class CommunityTests(unittest.TestCase):
         self.assertEqual(self.client.delete('/api/v1/profile/works/w1', headers=alice).status_code, 200)
         self.assertEqual(self.client.get(f'/api/v1/community/works/{pid}', headers=admin).status_code, 404)
         self.assertEqual(list(Path(self.media.name).rglob('*.webp')), [])
+
+    def test_media_of_unreviewed_work_is_author_and_admin_only(self):
+        alice, bob, admin = self.register('13800000020'), self.register('13800000021'), self.register(ADMIN)
+        pid, work = self.publish(alice)
+        detail = self.client.get(f'/api/v1/community/works/{pid}', headers=alice).json()
+        thumb, full = detail['thumbUrl'], detail['imageUrl']
+        # Pending: unguessable URL, but only the author and admins get the bytes.
+        self.assertEqual(self.client.get(thumb).status_code, 404)
+        self.assertEqual(self.client.get(thumb, headers=bob).status_code, 404)
+        preview = self.client.get(thumb, headers=alice)
+        self.assertEqual((preview.status_code, preview.headers['cache-control']), (200, 'private, no-store'))
+        self.assertEqual(self.client.get(full, headers=admin).status_code, 200)
+        self.approve(admin, pid)
+        public = self.client.get(thumb)
+        self.assertEqual((public.status_code, public.headers['cache-control']), (200, 'public, max-age=86400'))
+        # Rejected media is private again, including for anonymous visitors.
+        self.client.post(f'/api/v1/admin/works/{pid}/review', json={'action': 'reject', 'reason': '图片不清晰'}, headers=admin)
+        self.assertEqual(self.client.get(thumb).status_code, 404)
+        self.assertEqual(self.client.get(thumb, headers=bob).status_code, 404)
+        rejected = self.client.get(thumb, headers=alice)
+        self.assertEqual((rejected.status_code, rejected.headers['cache-control']), (200, 'private, no-store'))
+
+    def test_pending_work_report_takes_it_down(self):
+        alice, bob, admin = self.register('13800000022'), self.register('13800000023'), self.register(ADMIN)
+        pid, _ = self.publish(alice)
+        self.approve(admin, pid)
+        self.client.post('/api/v1/community/reports', json={'targetType': 'work', 'targetId': pid, 'reason': '疑似搬运'}, headers=bob)
+        # Author edits: the re-submitted version is pending again while the report is still open.
+        self.client.put('/api/v1/profile/works/w1', json={'id': 'w1', 'title': '改过的园', 'imageDataUrl': png('red')}, headers=alice)
+        self.assertEqual(self.client.get(f'/api/v1/community/works/{pid}', headers=alice).json()['reviewStatus'], 'pending')
+        queue = [item for item in self.client.get('/api/v1/admin/queue?type=report', headers=admin).json()['items'] if item['targetType'] == 'work']
+        self.client.post(f'/api/v1/admin/reports/{queue[0]["id"]}/resolve', json={'action': 'remove'}, headers=admin)
+        mine = self.client.get('/api/v1/profile/works', headers=alice).json()[0]
+        self.assertEqual(mine['reviewStatus'], 'rejected')
+        self.assertIn('举报', mine['rejectReason'])
+        self.assertEqual(self.client.get('/api/v1/admin/queue?type=work', headers=admin).json()['items'], [])
+        self.assertEqual(self.client.get('/api/v1/admin/queue?type=report', headers=admin).json()['items'], [])
+
+    def test_like_count_matches_rows_after_repeated_toggles(self):
+        alice, bob, carol, admin = self.register('13800000024'), self.register('13800000025'), self.register('13800000026'), self.register(ADMIN)
+        pid, _ = self.publish(alice)
+        self.approve(admin, pid)
+        path = f'/api/v1/community/works/{pid}/like'
+        for _ in range(3):
+            self.assertEqual(self.client.post(path, headers=bob).json()['likeCount'], 1)
+        self.assertEqual(self.client.post(path, headers=carol).json()['likeCount'], 2)
+        self.assertEqual(self.client.delete(path, headers=bob).json()['likeCount'], 1)
+        self.assertEqual(self.client.delete(path, headers=bob).json()['likeCount'], 1)
+        self.assertEqual(self.client.get(f'/api/v1/community/works/{pid}').json()['likeCount'], 1)
 
     def test_rate_limits_and_invalid_input(self):
         alice, admin = self.register('13800000019'), self.register(ADMIN)
