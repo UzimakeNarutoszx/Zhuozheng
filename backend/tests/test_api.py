@@ -66,6 +66,23 @@ class ApiTests(unittest.TestCase):
         body['sms_code'] = '123456'
         self.assertEqual(self.client.post('/api/v1/auth/register', json=body).status_code, 429)
 
+    def test_sms_ip_limit_runs_before_existence_check(self):
+        self.register('13800000001')
+        limiter.clear('sms-ip:testclient')
+        body = {'phone': '13800000001', 'scene': 'register'}
+        # Registered numbers used to answer 409 before the IP budget was touched.
+        for _ in range(30):
+            self.assertEqual(self.client.post('/api/v1/auth/send-sms', json=body).status_code, 409)
+        self.assertEqual(self.client.post('/api/v1/auth/send-sms', json=body).status_code, 429)
+        self.assertEqual(self.client.post('/api/v1/auth/send-sms', json={'phone': '13800000008', 'scene': 'reset_password'}).status_code, 429)
+
+    def test_forgot_password_ip_limit(self):
+        limiter.clear('sms-ip:testclient')
+        for _ in range(30):
+            self.assertEqual(self.client.post('/api/v1/auth/forgot-password', json={'phone': '13800000030', 'new_password': 'newpass123', 'sms_code': '123456'}).status_code, 404)
+        self.assertEqual(self.client.post('/api/v1/auth/forgot-password', json={'phone': '13800000030', 'new_password': 'newpass123', 'sms_code': '123456'}).status_code, 429)
+        self.assertEqual(self.client.post('/api/v1/auth/send-sms', json={'phone': '13800000031', 'scene': 'register'}).status_code, 429)
+
     def test_login_lockout(self):
         self.register()
         for _ in range(5):
