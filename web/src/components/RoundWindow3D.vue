@@ -23,6 +23,15 @@ function sayHello() {
 watch(() => props.speaking, speaking => { if (speaking) stopGreeting() })
 
 onMounted(async () => {
+  const conn = navigator.connection || {}
+  if (conn.saveData || /(^|-)(2g|3g)/.test(conn.effectiveType || '')) return
+  // 让首屏先渲染：空闲（或最多 1.6s）后再加载 three.js 与 GLB
+  await new Promise(resolve => {
+    let done = false
+    const finish = () => { if (!done) { done = true; resolve() } }
+    const timer = setTimeout(finish, 1600)
+    if (window.requestIdleCallback) requestIdleCallback(() => { clearTimeout(timer); finish() }, { timeout: 2600 })
+  })
   let disposed = false
   let renderer, resize, observer, mixer, frame = 0, model
   const resources = new Set()
@@ -146,7 +155,7 @@ onBeforeUnmount(() => { clearTimeout(fallbackTimer); cleanup() })
 <template>
   <div class="round-window-3d" :data-character="props.character" :class="{ 'is-ready': ready, 'is-greeting': greeting, 'is-compact': compact }">
     <button ref="host" class="character-stage" type="button" :aria-label="`和${character.name}打个招呼`" @click="sayHello">
-      <img v-if="!ready" :src="assetUrl(`/assets/models/${character.file}-preview.png`)" :alt="`按原稿制作的立体${character.name}伙伴`" decoding="async">
+      <img v-if="!ready" :src="assetUrl(`/assets/models/${character.file}-preview.webp`)" :alt="`按原稿制作的立体${character.name}伙伴`" decoding="async">
     </button>
     <div v-if="!compact" class="character-controls">
       <span class="character-caption" role="status">{{ unavailable ? `${character.name}在这里陪你` : speaking ? '我在认真想你的问题…' : greeting ? '你好呀，一起看看园林吧！' : '点点我，我会和你打招呼' }}</span>
