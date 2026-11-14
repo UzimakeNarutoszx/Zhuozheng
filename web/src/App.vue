@@ -132,7 +132,7 @@ onBeforeUnmount(() => { window.removeEventListener('popstate', applyLocation); w
       <AskPage v-else-if="page === 'ask'" :key="token" :user="user" :token="token" @navigate="navigate" @session-expired="sessionExpired" />
     </main>
     <MascotGuide v-if="page !== 'ask' && page !== 'login'" :key="currentMascot.id" :mascot="currentMascot" :placement="mascotPlacement" :model-delay="page === 'mine' ? 900 : 0" @navigate="navigate" />
-    <footer class="page-footer"><span>拙政观景 · 拙政园造景手法</span><span>独立网页出版物 · 资料访问 2026</span><a class="site-icp" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">京ICP备2026077702号-1</a></footer>
+    <footer class="page-footer"><span>拙政观景 · 拙政园造景手法</span><span>独立网页出版物 · 资料访问 2026</span><span class="site-icp">京ICP备2026077702号-1</span></footer>
   </div>
 </template>
 
