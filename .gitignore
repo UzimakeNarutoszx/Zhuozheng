@@ -3,3 +3,10 @@
 web/vite-preview.log
 scripts/__pycache__/
 **/__pycache__/
+
+# 本地生成物 / 工具缓存（不入库）
+web/node_modules/
+web/dist/
+output/
+.claude/
+.playwright-cli/

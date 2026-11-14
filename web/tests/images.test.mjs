@@ -7,6 +7,7 @@ import { imageVariants } from '../src/data/image-variants.js'
 
 test('asset URLs support subpath hosting and preserve uploaded/remote sources', () => {
   assert.equal(assetUrl('/assets/garden/a.jpg', '/garden/'), '/garden/assets/garden/a.jpg')
+  assert.equal(assetUrl('/api/v1/media/thumb/abc.webp', '/garden/'), '/garden/api/v1/media/thumb/abc.webp')
   assert.equal(assetUrl('data:image/png;base64,abc', '/garden/'), 'data:image/png;base64,abc')
   assert.equal(assetUrl('https://example.com/photo.jpg', '/garden/'), 'https://example.com/photo.jpg')
   assert.ok(imageSrcset('/assets/garden/garden-001.jpg').includes('480w'))

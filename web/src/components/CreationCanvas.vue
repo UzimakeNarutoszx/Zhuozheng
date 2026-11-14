@@ -1,12 +1,15 @@
 <script setup>
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
-import { downloadCanvas, fitImage } from '../utils/image-export.js'
-import { canUseStorage, getSourceImage, writeWork } from '../utils/local-work.js'
+import { compressPhoto, downloadCanvas, fitImage, jpegData } from '../utils/image-export.js'
+import { canUseStorage, getSourceImage, makeThumbFromCanvas, writeWork } from '../utils/local-work.js'
+import { gardenPoints } from '../data/garden-points.js'
 import { assetUrl } from '../utils/assets.js'
 import { createLatestImageRequest } from '../utils/image-loader.js'
 const props = defineProps({ initial: Object })
 const emit = defineEmits(['saved'])
-const canvas = ref(null), sourceImageDataUrl = ref(''), frame = ref('round'), keepCanvasBorder = ref(true), title = ref('我的园林取景'), method = ref('frame'), note = ref(''), scale = ref(1), offset = ref({ x: 0, y: 0 }), dragging = ref(false), pointer = ref({ x: 0, y: 0 }), image = ref(null), frameImage = ref(null), errorMessage = ref('')
+const canvas = ref(null), sourceImageDataUrl = ref(''), frame = ref('round'), keepCanvasBorder = ref(false), title = ref('我的园林取景'), method = ref('frame'), note = ref(''), pointId = ref(''), scale = ref(1), offset = ref({ x: 0, y: 0 }), dragging = ref(false), pointer = ref({ x: 0, y: 0 }), image = ref(null), frameImage = ref(null), errorMessage = ref('')
+const selectedPoint = computed(() => gardenPoints.find(point => point.id === pointId.value) || null)
+function methodLabel(id) { return methods.find(item => item.id === id)?.label || '' }
 const frameLoading = ref(false), photoLoading = ref(false), frameError = ref(''), photoError = ref('')
 const imageBusy = computed(() => frameLoading.value || photoLoading.value)
 const imageUnavailable = computed(() => imageBusy.value || !image.value || Boolean(frameError.value) || Boolean(photoError.value))
@@ -19,8 +22,6 @@ function draw() {
   if (!c) return
   const ctx = c.getContext('2d')
   const border = keepCanvasBorder.value ? 52 : 0
-  const frameInsetX = 66
-  const frameInsetY = 37
   const innerWidth = c.width - border * 2
   const innerHeight = c.height - border * 2
   ctx.clearRect(0, 0, c.width, c.height)
@@ -38,27 +39,7 @@ function draw() {
     ctx.restore()
   }
   if (frameImage.value) {
-    const x = frameInsetX
-    const y = frameInsetY
-    const w = c.width - frameInsetX * 2
-    const h = c.height - frameInsetY * 2
-    ctx.save()
-    ctx.globalAlpha = .2
-    ctx.filter = 'blur(10px)'
-    ctx.drawImage(frameImage.value, x, y + 8, w, h)
-    ctx.restore()
-    ctx.save()
-    ctx.globalAlpha = .96
-    ctx.globalCompositeOperation = 'multiply'
-    ctx.drawImage(frameImage.value, x, y, w, h)
-    ctx.restore()
-    const edge = ctx.createLinearGradient(0, 0, 0, c.height)
-    edge.addColorStop(0, 'rgba(38,29,22,.16)')
-    edge.addColorStop(.12, 'rgba(38,29,22,0)')
-    edge.addColorStop(.86, 'rgba(38,29,22,0)')
-    edge.addColorStop(1, 'rgba(38,29,22,.12)')
-    ctx.fillStyle = edge
-    ctx.fillRect(x, y, w, h)
+    ctx.drawImage(frameImage.value, 0, 0, c.width, c.height)
   }
   if (keepCanvasBorder.value) {
     ctx.fillStyle = '#ffffff'
@@ -116,16 +97,20 @@ function save() {
   if (frameError.value || photoError.value) return
   if (!image.value) { errorMessage.value = '先选择一张图片'; return }
   const id = props.initial?.id || globalThis.crypto?.randomUUID?.() || `work-${Date.now()}-${Math.random().toString(16).slice(2)}`
-  const work = { id, title: title.value || '未命名取景', methodId: method.value, note: note.value, sourceImageDataUrl: sourceImageDataUrl.value || props.initial?.sourceImageDataUrl || props.initial?.imageDataUrl, imageDataUrl: canvas.value.toDataURL('image/png'), frameId: frame.value, keepCanvasBorder: keepCanvasBorder.value, scale: scale.value, offset: offset.value, createdAt: props.initial?.createdAt || Date.now() }
   if (!canUseStorage()) { errorMessage.value = '浏览器本地存储不可用，请检查隐私设置或删除旧作品后重试'; return }
-  try { writeWork(work); errorMessage.value = ''; emit('saved', work) } catch { errorMessage.value = '作品保存失败，可能是浏览器存储空间不足。请换一张较小的图片或删除旧作品后重试' }
+  try {
+    const cover = jpegData(canvas.value)
+    const work = { id, title: title.value || '未命名取景', methodId: method.value, note: note.value, pointId: pointId.value || '', sourceImageDataUrl: compressPhoto(image.value), imageDataUrl: cover, thumbDataUrl: makeThumbFromCanvas(canvas.value), frameId: frame.value, keepCanvasBorder: keepCanvasBorder.value, scale: scale.value, offset: offset.value, createdAt: props.initial?.createdAt || Date.now() }
+    writeWork(work); errorMessage.value = ''; emit('saved', work)
+  } catch (error) { errorMessage.value = error.message?.includes('压缩后') ? error.message : '作品保存失败，可能是浏览器存储空间不足。请换一张较小的图片或删除旧作品后重试' }
 }
-function exportImage() { if (imageUnavailable.value) { errorMessage.value = '请等待图片加载完成后再导出'; return }; downloadCanvas(canvas.value, `${title.value || '我的园林取景'}.png`) }
+function exportImage() { if (imageUnavailable.value) { errorMessage.value = '请等待图片加载完成后再导出'; return }; try { downloadCanvas(canvas.value, `${title.value || '我的园林取景'}.jpg`) } catch (error) { errorMessage.value = error.message } }
 watch(frame, loadFrame)
 watch([keepCanvasBorder, scale], draw)
 onMounted(() => {
   if (props.initial) {
     title.value = props.initial.title; method.value = props.initial.methodId; frame.value = props.initial.frameId || frame.value; keepCanvasBorder.value = props.initial.keepCanvasBorder ?? true; scale.value = props.initial.scale || 1; offset.value = props.initial.offset || { x: 0, y: 0 }; note.value = props.initial.note || ''
+    pointId.value = gardenPoints.some(point => point.id === props.initial.pointId) ? props.initial.pointId : ''
     sourceImageDataUrl.value = getSourceImage(props.initial)
     if (sourceImageDataUrl.value) loadPhoto(sourceImageDataUrl.value)
     else photoError.value = '作品原图不存在，请重新选择照片'
@@ -147,8 +132,9 @@ onBeforeUnmount(() => { fileSequence += 1; fileReader?.abort(); frameRequest.can
         <div class="control-group"><div class="control-heading"><span class="control-label">窗框样本</span><span class="control-count">{{ frames.findIndex(item => item.id === frame) + 1 }} / 5</span></div><div class="frame-grid"><button v-for="item in frames" :key="item.id" type="button" :class="{ selected: frame === item.id }" @click="frame = item.id"><span class="frame-thumb"><img :src="assetUrl(item.asset)" :alt="item.label" decoding="async"></span><strong>{{ item.label }}</strong><small>{{ item.detail }}</small></button></div></div>
         <div class="range-block"><label class="range-label"><span>画面尺度</span><output>{{ Math.round(scale * 100) }}%</output><input v-model.number="scale" type="range" min="0.7" max="2" step="0.05"></label><label class="check-label"><input v-model="keepCanvasBorder" type="checkbox"><span>保留白色画布边框</span></label></div>
         <div class="field-pair"><label>作品标题<input v-model="title" placeholder="给这幅景取个名字"></label><label>造景手法<select v-model="method"><option v-for="item in methods" :key="item.id" :value="item.id">{{ item.label }}</option></select></label></div>
+        <div class="control-group point-picker"><div class="control-heading"><span class="control-label">园内点位</span><span class="control-count">{{ selectedPoint ? selectedPoint.name : '选填' }}</span></div><label><select v-model="pointId"><option value="">不标注点位</option><option v-for="point in gardenPoints" :key="point.id" :value="point.id">{{ point.name }} · {{ methodLabel(point.methodId) }}</option></select></label><p class="point-hint">标注后，作品会出现在“我的 → 作品地图”的对应点位上；旧作品不标注也可以正常保存和显示。</p></div>
         <label>一句话记录<textarea v-model="note" rows="3" placeholder="我在哪里发现了这幅景？"></textarea></label>
-        <div class="studio-actions"><button type="button" class="primary-button" :disabled="imageUnavailable" @click="save">保存作品</button><button type="button" class="secondary-button" :disabled="imageUnavailable" @click="exportImage">导出 PNG</button></div>
+        <div class="studio-actions"><button type="button" class="primary-button" :disabled="imageUnavailable" @click="save">保存作品</button><button type="button" class="secondary-button" :disabled="imageUnavailable" @click="exportImage">导出 JPG</button></div>
       </div>
     </div>
   </div>
@@ -189,6 +175,7 @@ onBeforeUnmount(() => { fileSequence += 1; fileReader?.abort(); frameRequest.can
 .field-pair { display:grid; grid-template-columns:1fr; gap:14px; align-items:start; }
 .field-pair > label { align-content:start; }
 .studio-controls label { color:#665c4e; }
+.point-hint { margin:-6px 0 0; color:#847a6a; font:11px/1.7 system-ui,sans-serif; }
 .studio-actions { margin-top:4px; justify-content:flex-start; align-items:center; }
 .studio-actions .primary-button { min-width:132px; }
 .studio-actions .secondary-button { min-width:118px; }

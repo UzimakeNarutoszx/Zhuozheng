@@ -1,3 +1,5 @@
+import base64
+import io
 import json
 import time
 from contextlib import asynccontextmanager
@@ -5,6 +7,7 @@ from datetime import datetime
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from PIL import Image, ImageOps
 from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -139,18 +142,48 @@ def profile(user: User = Depends(current_user), db: Session = Depends(get_db)):
 @app.get('/api/v1/profile/works')
 def list_works(user: User = Depends(current_user), db: Session = Depends(get_db)):
     state = community.community_state(db, user.id)
-    return [{**json.loads(row.payload), **community.state_fields(state.get(row.work_id))} for row in db.scalars(select(Work).where(Work.user_id == user.id).order_by(Work.updated_at.desc()))]
+    items = []
+    for row in db.scalars(select(Work).where(Work.user_id == user.id).order_by(Work.updated_at.desc())):
+        payload = json.loads(row.payload)
+        # 列表只返回缩略图 + 元数据；原图按需调 /profile/works/{id} 取。
+        full = payload.get('imageDataUrl')
+        thumb = payload.get('thumbDataUrl') or ''
+        if not thumb and full:
+            thumb = make_work_thumb(full)
+            if thumb:
+                payload['thumbDataUrl'] = thumb
+                row.payload = json.dumps(payload, ensure_ascii=False)
+        payload.pop('imageDataUrl', None)
+        payload.pop('sourceImageDataUrl', None)
+        payload['hasImage'] = bool(full)
+        items.append({**payload, **community.state_fields(state.get(row.work_id))})
+    db.commit()
+    return items
+
+
+def make_work_thumb(data_url: str) -> str:
+    """列表缩略图：480px JPEG，只用于卡片；详情仍取原图。"""
+    try:
+        raw = base64.b64decode(data_url.partition(',')[2])
+        image = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert('RGB')
+        image.thumbnail((480, 480))
+        out = io.BytesIO()
+        image.save(out, 'JPEG', quality=68, optimize=True)
+        return 'data:image/jpeg;base64,' + base64.b64encode(out.getvalue()).decode()
+    except Exception:
+        return ''
 
 
 def upsert_work(db, user_id, payload, *, only_new=False):
-    row = db.scalar(select(Work).where(Work.user_id == user_id, Work.work_id == payload.id))
+    data = payload if isinstance(payload, dict) else payload.model_dump()
+    row = db.scalar(select(Work).where(Work.user_id == user_id, Work.work_id == data['id']))
     if row and only_new:
         return False
-    serialized = json.dumps(payload.model_dump(), ensure_ascii=False)
+    serialized = json.dumps(data, ensure_ascii=False)
     if row:
         row.payload, row.updated_at = serialized, datetime.utcnow()
     else:
-        db.add(Work(user_id=user_id, work_id=payload.id, payload=serialized))
+        db.add(Work(user_id=user_id, work_id=data['id'], payload=serialized))
     return True
 
 
@@ -159,7 +192,11 @@ def import_works(payload: ImportRequest, user: User = Depends(current_user), db:
     # Repeated imports preserve the cloud copy and keep the browser original untouched.
     imported = 0
     for item in payload.works:
-        imported += int(upsert_work(db, user.id, item, only_new=True))
+        data = item.model_dump()
+        thumb = make_work_thumb(data.get('imageDataUrl', ''))
+        if thumb:
+            data['thumbDataUrl'] = thumb
+        imported += int(upsert_work(db, user.id, data, only_new=True))
         db.flush()
     db.commit()
     return {'imported': imported, 'skipped': len(payload.works) - imported, 'works': list_works(user, db)}
@@ -167,10 +204,16 @@ def import_works(payload: ImportRequest, user: User = Depends(current_user), db:
 
 @app.post('/api/v1/profile/works')
 def save_work(payload: WorkRequest, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    upsert_work(db, user.id, payload)
+    data = payload.model_dump()
+    thumb = make_work_thumb(data.get('imageDataUrl', ''))
+    if thumb:
+        data['thumbDataUrl'] = thumb
+    else:
+        data.pop('thumbDataUrl', None)
+    upsert_work(db, user.id, data)
     db.commit()
-    community.on_work_saved(db, user.id, payload.id, payload.model_dump())
-    return payload.model_dump()
+    community.on_work_saved(db, user.id, data['id'], data)
+    return data
 
 
 @app.put('/api/v1/profile/works/{work_id}')

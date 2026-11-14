@@ -166,6 +166,51 @@ class ApiTests(unittest.TestCase):
         work['imageDataUrl'] = 'data:image/png;base64,not-real'
         self.assertEqual(self.client.post('/api/v1/profile/works', json=work, headers=alice).status_code, 422)
 
+    def test_work_point_id_whitelist_and_legacy_payloads(self):
+        import json
+        from app.db import Work
+
+        _, headers = self.register()
+        output = io.BytesIO()
+        Image.new('RGB', (2, 2), 'green').save(output, format='PNG')
+        image = 'data:image/png;base64,' + base64.b64encode(output.getvalue()).decode()
+        work = {'id': 'work-point-1', 'title': '窗里的园', 'imageDataUrl': image}
+
+        def save(**extra):
+            return self.client.post('/api/v1/profile/works', json={**work, **extra}, headers=headers)
+
+        # A known point round-trips to the work list.
+        saved = save(pointId='window')
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()['pointId'], 'window')
+        listed = self.client.get('/api/v1/profile/works', headers=headers).json()
+        self.assertEqual(listed[0]['pointId'], 'window')
+        # The imported copy follows the same whitelist.
+        imported = self.client.post('/api/v1/profile/works/import', json={'works': [{**work, 'id': 'work-point-2', 'pointId': 'bridge'}]}, headers=headers)
+        self.assertEqual(imported.json()['imported'], 1, imported.text)
+        self.assertIn('bridge', [item.get('pointId') for item in imported.json()['works']])
+        self.assertEqual(self.client.post('/api/v1/profile/works/import', json={'works': [{**work, 'id': 'work-point-3', 'pointId': 'unknown'}]}, headers=headers).status_code, 422)
+
+        # Empty, missing and whitespace-padded point ids keep working; unknown ids do not.
+        self.assertEqual(save(pointId='').json()['pointId'], '')
+        self.assertEqual(save().json()['pointId'], '')
+        self.assertEqual(save(pointId='  ').json()['pointId'], '')
+        self.assertEqual(save(pointId=' water ').json()['pointId'], 'water')
+        self.assertEqual(save(pointId='moon-gate').status_code, 422)
+        self.assertEqual(save(pointId='a' * 65).status_code, 422)
+
+        # Payloads written before pointId existed still list without the key.
+        with SessionLocal() as db:
+            row = db.scalar(select(Work).where(Work.work_id == 'work-point-1'))
+            payload = json.loads(row.payload)
+            payload.pop('pointId', None)
+            row.payload = json.dumps(payload, ensure_ascii=False)
+            db.commit()
+        legacy = [item for item in self.client.get('/api/v1/profile/works', headers=headers).json() if item['id'] == 'work-point-1']
+        self.assertEqual(len(legacy), 1)
+        self.assertNotIn('pointId', legacy[0])
+        self.assertEqual(legacy[0]['title'], '窗里的园')
+
     def test_ai_refund_stream_history_and_delete_no_refund(self):
         data, headers = self.register()
         with patch('app.services.stream_ai', side_effect=RuntimeError('upstream unavailable')):

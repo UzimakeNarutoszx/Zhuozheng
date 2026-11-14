@@ -53,6 +53,8 @@ export const community = {
   feed: (options, token) => apiRequest(feedQuery(options), { token }),
   detail: (id, token) => apiRequest(`/community/works/${encodeURIComponent(id)}`, { token }),
   like: (id, liked, token) => apiRequest(`/community/works/${encodeURIComponent(id)}/like`, { token, method: liked ? 'POST' : 'DELETE' }),
+  favorite: (id, saved, token) => apiRequest(`/community/works/${encodeURIComponent(id)}/favorite`, { token, method: saved ? 'POST' : 'DELETE' }),
+  favorites: (cursor, token) => apiRequest(`/profile/favorites${cursor ? `?cursor=${cursor}` : ''}`, { token }),
   comments: (id, cursor, token) => apiRequest(`/community/works/${encodeURIComponent(id)}/comments${cursor ? `?cursor=${cursor}` : ''}`, { token }),
   comment: (id, content, token) => apiRequest(`/community/works/${encodeURIComponent(id)}/comments`, { token, body: { content } }),
   removeComment: (cid, token) => apiRequest(`/community/comments/${cid}`, { token, method: 'DELETE' }),

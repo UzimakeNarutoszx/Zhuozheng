@@ -1,17 +1,95 @@
-<script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+<script>
 import { assetUrl } from '../utils/assets.js'
+import { MASCOT_RETRY_DELAY, MASCOT_RETRY_LIMIT, createMascotAttemptState } from '../data/mascots.js'
 
-const props = defineProps({ speaking: Boolean, compact: Boolean, preview: { type: Boolean, default: true }, character: { type: String, default: 'round' } })
-const emit = defineEmits(['ready', 'error'])
-const characters = {
+export const CHARACTERS = {
   round: { name: '梅梅', file: 'round-window' },
   coin: { name: '钱钱', file: 'coin-window' },
   ice: { name: '冰冰', file: 'ice-window' }
 }
-const character = computed(() => characters[props.character] || characters.round)
+export function characterFor(id) { return CHARACTERS[id] || CHARACTERS.round }
+
+// three.js 代码块与 GLB 模型都按模块缓存：预加载和组件挂载共用一个 Promise，
+// 避免“先请示再下载一次”。模型被组件消费后从缓存移除，防止复用已 dispose 的几何体。
+let threePromise = null
+function loadThree() {
+  if (!threePromise) {
+    threePromise = Promise.all([
+      import('three'),
+      import('three/addons/loaders/GLTFLoader.js'),
+      import('three/addons/libs/meshopt_decoder.module.js')
+    ])
+      .catch(error => { threePromise = null; throw error })
+  }
+  return threePromise
+}
+function modelUrl(file) { return assetUrl(`/assets/models/${file}.glb`) }
+const warmModels = new Map()
+const pendingModels = new Map()
+function loadModel(file) {
+  // 让 GLB 下载和 three/loader 代码并行：模型 160KB 左右，等 three 解析完再发请求会白等一个 RTT。
+  const buffer = fetch(modelUrl(file), { cache: 'force-cache' }).then(response => {
+    if (!response.ok) throw new Error(`model ${response.status}`)
+    return response.arrayBuffer()
+  })
+  return Promise.all([loadThree(), buffer]).then(([[, { GLTFLoader }, { MeshoptDecoder }], data]) => {
+    const loader = new GLTFLoader()
+    loader.setMeshoptDecoder(MeshoptDecoder)
+    return new Promise((resolve, reject) => loader.parse(data, '', resolve, reject))
+  })
+}
+
+// 进入“我的”等页面时主动预热：把 three.js 代码块和钱钱的 GLB 先拉下来。
+// 失败只清掉缓存、不抛给页面（吉祥物仍显示静态图）。
+export function preloadCharacter(character = 'coin') {
+  const { file } = characterFor(character)
+  if (warmModels.has(file)) return Promise.resolve(warmModels.get(file))
+  if (pendingModels.has(file)) return pendingModels.get(file)
+  const promise = loadModel(file).then(gltf => {
+    warmModels.set(file, gltf)
+    pendingModels.delete(file)
+    return gltf
+  }, error => {
+    pendingModels.delete(file)
+    throw error
+  })
+  pendingModels.set(file, promise)
+  return promise
+}
+
+// 组件挂载时优先消费预加载结果；没有预加载就现取。拿到后清空缓存项。
+export async function takeCharacterModel(character) {
+  const { file } = characterFor(character)
+  if (warmModels.has(file)) {
+    const gltf = warmModels.get(file)
+    warmModels.delete(file)
+    return gltf
+  }
+  if (pendingModels.has(file)) {
+    const gltf = await pendingModels.get(file)
+    warmModels.delete(file)
+    return gltf
+  }
+  return loadModel(file)
+}
+
+export function mascotCharacterName(character) { return characterFor(character).name }
+</script>
+
+<script setup>
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
+const props = defineProps({ speaking: Boolean, compact: Boolean, preview: { type: Boolean, default: true }, character: { type: String, default: 'round' } })
+const emit = defineEmits(['ready', 'error', 'retry'])
+const character = computed(() => characterFor(props.character))
 const host = ref(null), ready = ref(false), greeting = ref(false), unavailable = ref(false)
-let cleanup = () => {}, greet = () => {}, stopGreeting = () => {}, fallbackTimer
+// 可观测状态：loading / retrying / ready / failed，配合 data-status 供页面与测试观察。
+const status = ref('idle')
+const attempts = ref(0)
+const lastError = ref('')
+const attemptState = createMascotAttemptState()
+let cleanup = () => {}, greet = () => {}, stopGreeting = () => {}, fallbackTimer = null, retryTimer = null
+let destroyed = false, booting = false
 function sayHello() {
   clearTimeout(fallbackTimer)
   greeting.value = false
@@ -35,11 +113,43 @@ function waitBeforeLoading(compact) {
   })
 }
 
-onMounted(async () => {
-  const conn = navigator.connection || {}
-  if (conn.saveData || /(^|-)(2g|3g)/.test(conn.effectiveType || '')) { emit('error'); return }
-  await waitBeforeLoading(props.compact)
-  let disposed = false
+function teardown() {
+  cleanup()
+  cleanup = () => {}
+}
+function failFinal() {
+  ready.value = false
+  unavailable.value = true
+  status.value = 'failed'
+  teardown()
+  emit('error', lastError.value || '3d-unavailable')
+}
+function scheduleFailure(error) {
+  lastError.value = error?.name === 'AbortError' ? 'aborted' : (error?.message || '3d-load-failed')
+  if (error?.noRetry) { attemptState.failed(); failFinal(); return }
+  attemptState.failed()
+  if (attemptState.canRetry) {
+    // 失败一次自动重试：网络抖动时不必让用户自己动手。静态图始终留在原位。
+    status.value = 'retrying'
+    emit('retry', { attempt: attemptState.attempts, delay: MASCOT_RETRY_DELAY })
+    clearTimeout(retryTimer)
+    retryTimer = setTimeout(() => { retryTimer = null; boot() }, MASCOT_RETRY_DELAY)
+    return
+  }
+  failFinal()
+}
+
+async function boot() {
+  if (destroyed || booting) return
+  booting = true
+  ready.value = false
+  unavailable.value = false
+  lastError.value = ''
+  attemptState.start()
+  attempts.value = attemptState.attempts
+  status.value = 'loading'
+  const attempt = attemptState.attempts
+  const stale = () => destroyed || attempt !== attemptState.attempts
   let renderer, resize, observer, mixer, frame = 0, model
   const resources = new Set()
   const disposeModel = object => object?.traverse(node => {
@@ -50,17 +160,27 @@ onMounted(async () => {
     }
   })
   cleanup = () => {
-    disposed = true
     cancelAnimationFrame(frame)
     resize?.disconnect(); observer?.disconnect(); mixer?.stopAllAction()
-    disposeModel(model)
+    disposeModel(model); model = null
     for (const resource of resources) resource.dispose()
-    renderer?.dispose(); renderer?.domElement.remove()
+    resources.clear()
+    renderer?.dispose()
+    renderer?.domElement?.remove()
+    renderer = null
     greet = () => {}; stopGreeting = () => {}
   }
   try {
-    const [THREE, { GLTFLoader }] = await Promise.all([import('three'), import('three/addons/loaders/GLTFLoader.js')])
-    if (disposed) return
+    const conn = navigator.connection || {}
+    // 明确省流 / 2G / 3G 时不下载 3D，直接保留静态图，也不值得重试。
+    // 只有明确省流或 2G 才跳过 3D；3G 也继续加载，避免“有时一直是静态图”。
+    if (conn.saveData || /(^|-)2g/.test(conn.effectiveType || '')) throw Object.assign(new Error('network-limited'), { noRetry: true })
+    if (attempt === 1) {
+      await waitBeforeLoading(props.compact)
+      if (stale()) { cleanup(); return }
+    }
+    const [THREE] = await loadThree()
+    if (stale()) { cleanup(); return }
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(34, 1, .1, 100)
     renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'low-power' })
@@ -105,11 +225,13 @@ onMounted(async () => {
     host.value.addEventListener('pointerleave', () => { hoverX = 0 })
     host.value.addEventListener('pointerenter', () => { if (!props.speaking && !greeting.value) greet() })
     renderer.domElement.addEventListener('webglcontextlost', event => {
-      event.preventDefault(); ready.value = false; unavailable.value = true; emit('error'); cleanup()
+      event.preventDefault()
+      ready.value = false
+      if (!stale()) scheduleFailure(Object.assign(new Error('webgl-context-lost'), { noRetry: false }))
     })
-    const gltf = await new GLTFLoader().loadAsync(assetUrl(`/assets/models/${character.value.file}.glb`))
+    const gltf = await takeCharacterModel(props.character)
+    if (stale()) { disposeModel(gltf?.scene); cleanup(); return }
     model = gltf.scene
-    if (disposed) { disposeModel(model); for (const resource of resources) resource.dispose(); return }
     const box = new THREE.Box3().setFromObject(model)
     size = box.getSize(new THREE.Vector3())
     model.position.sub(box.getCenter(new THREE.Vector3()))
@@ -125,6 +247,9 @@ onMounted(async () => {
     }
     renderer.render(scene, camera)
     ready.value = true
+    unavailable.value = false
+    status.value = 'ready'
+    attemptState.loaded()
     emit('ready')
     greet()
     const tick = now => {
@@ -154,15 +279,37 @@ onMounted(async () => {
       renderer.render(scene, camera)
     }
     frame = requestAnimationFrame(tick)
-  } catch {
-    if (!disposed) { unavailable.value = true; ready.value = false; emit('error'); cleanup() }
+  } catch (error) {
+    if (stale()) { cleanup(); return }
+    scheduleFailure(error)
+  } finally {
+    booting = false
   }
+}
+
+// 手动重试（静态图下方的“重试动态形象”）：不受自动重试次数限制。
+function retry() {
+  if (destroyed) return
+  clearTimeout(retryTimer)
+  retryTimer = null
+  if (booting) return
+  attemptState.retry({ manual: true })
+  attempts.value = attemptState.attempts
+  status.value = 'loading'
+  boot()
+}
+defineExpose({ retry })
+onMounted(() => { boot() })
+onBeforeUnmount(() => {
+  destroyed = true
+  clearTimeout(fallbackTimer)
+  clearTimeout(retryTimer)
+  cleanup()
 })
-onBeforeUnmount(() => { clearTimeout(fallbackTimer); cleanup() })
 </script>
 
 <template>
-  <div class="round-window-3d" :data-character="props.character" :class="{ 'is-ready': ready, 'is-greeting': greeting, 'is-compact': compact }">
+  <div class="round-window-3d" :data-character="props.character" :data-status="status" :data-attempts="attempts" :data-error="lastError || undefined" :class="{ 'is-ready': ready, 'is-greeting': greeting, 'is-compact': compact, 'is-failed': status === 'failed' }">
     <button ref="host" class="character-stage" type="button" :aria-label="`和${character.name}打个招呼`" @click="sayHello">
       <img v-if="!ready && preview" :src="assetUrl(`/assets/models/${character.file}-preview.webp`)" :alt="`按原稿制作的立体${character.name}伙伴`" decoding="async">
     </button>

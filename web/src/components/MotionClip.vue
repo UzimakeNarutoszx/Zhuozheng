@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { motionClips } from '../data/motion-clips.js'
+import { assetUrl } from '../utils/assets.js'
 
 const props = defineProps({ clip: { type: String, required: true }, fallback: { type: String, default: '' }, className: { type: String, default: '' } })
 const video = ref(null)
@@ -8,8 +9,8 @@ const reduced = ref(false)
 const failed = ref(false)
 let observer
 let mediaQuery
-const source = computed(() => motionClips[props.clip])
-const poster = computed(() => source.value?.poster || props.fallback)
+const source = computed(() => { const clip = motionClips[props.clip]; return clip && { ...clip, poster: assetUrl(clip.poster), mobile: assetUrl(clip.mobile), desktop: assetUrl(clip.desktop) } })
+const poster = computed(() => source.value?.poster || assetUrl(props.fallback))
 function updateMotion() { reduced.value = Boolean(mediaQuery?.matches); if (reduced.value) video.value?.pause() }
 function onLoaded() { if (!reduced.value) video.value?.play().catch(() => {}) }
 onMounted(() => {

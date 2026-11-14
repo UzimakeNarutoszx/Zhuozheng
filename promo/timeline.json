@@ -1,0 +1,21 @@
+{
+  "fps": 30, "width": 1080, "height": 1920, "duration": 30.0,
+  "palette": {"ink": "#173a36", "ink_soft": "#41645d", "paper": "#f5f0e5", "paper_deep": "#e9dfcc", "water": "#c7dcd7", "clay": "#9c4d35", "gold": "#ba8d50"},
+  "fonts": {"serif": "/System/Library/Fonts/Supplemental/Songti.ttc", "sans": "/System/Library/Fonts/STHeiti Medium.ttc", "sans_light": "/System/Library/Fonts/STHeiti Light.ttc"},
+  "safe": {"top": 0.12, "bottom": 0.22, "right": 0.14, "left_px": 64},
+  "url": "http://127.0.0.1:4173/",
+  "music": {"file": "/Users/ens/Music/已完成文件/憩.mp3", "start": null, "drop_at": 3.5},
+  "shots": [
+    {"key": "hook", "start": 0.0, "end": 3.5, "clip": "web/public/assets/garden/garden-001.jpg", "label": "ZHUOZHENG", "title": "换个位置，换一幅画", "voice_at": 0.3},
+    {"key": "brand", "start": 3.5, "end": 7.0, "clip": "capture/home.webm", "route": "#home", "label": "拙政观景", "title": "邂逅拙政巧景，若见江南芳华", "voice_at": 3.6},
+    {"key": "methods", "start": 7.0, "end": 10.5, "clip": "capture/methods.webm", "route": "#methods", "label": "造景手法", "title": "五种手法，一页看懂", "badges": ["框景", "借景", "对景", "漏景", "障景"], "voice_at": 7.1},
+    {"key": "detail", "start": 10.5, "end": 14.0, "clip": "capture/detail.webm", "route": "#method-detail/frame", "label": "框景", "title": "现场照片，指给你看", "voice_at": 10.6},
+    {"key": "explore", "start": 14.0, "end": 17.5, "clip": "capture/explore.webm", "route": "#explore", "label": "游园观察", "title": "点一点|找到视线", "voice_at": 14.1},
+    {"key": "studio", "start": 17.5, "end": 21.0, "clip": "capture/studio.webm", "route": "#studio", "label": "我的造景", "title": "给照片|选一扇窗", "voice_at": 17.6},
+    {"key": "ask", "start": 21.0, "end": 24.0, "clip": "capture/ask.webm", "route": "#ask", "label": "问问", "title": "不懂就问，带出处", "voice_at": 21.1},
+    {"key": "community", "start": 24.0, "end": 27.0, "clip": "capture/community.webm", "route": "#community", "label": "社区", "title": "和大家|一起游园", "voice_at": 24.1},
+    {"key": "outro", "start": 27.0, "end": 30.0, "clip": "web/public/garden-mark.png", "label": "拙政观景", "title": "邂逅拙政巧景，若见江南芳华", "voice_at": 26.6}
+  ],
+  "cuts": [3.5, 7.0, 10.5, 14.0, 17.5, 21.0, 24.0, 27.0],
+  "notes": "clip 路径：capture/* 相对 output/promo-video/，其余相对项目根。录屏片段取 ready.json 中就绪点之后的画面。"
+}

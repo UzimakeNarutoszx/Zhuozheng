@@ -1,3 +1,6 @@
+import { assetUrl } from './assets.js'
+
+export const apiUrl = (path, base = import.meta.env?.BASE_URL || '/') => assetUrl(`/api/v1${path}`, base)
 const TOKEN_KEY = 'garden-auth-token-v1'
 const USER_KEY = 'garden-auth-user-v1'
 
@@ -21,7 +24,7 @@ export function chatHistory(messages) {
 
 export async function apiRequest(path, { token, body, signal, method = body ? 'POST' : 'GET' } = {}) {
   let response
-  try { response = await fetch(`/api/v1${path}`, { method, signal, headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) }) } catch (error) {
+  try { response = await fetch(apiUrl(path), { method, signal, headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) }) } catch (error) {
     if (error.name === 'AbortError') throw error
     throw new Error('暂时连接不上服务，请检查网络后重试。')
   }
@@ -32,7 +35,7 @@ export async function apiRequest(path, { token, body, signal, method = body ? 'P
 
 export async function streamChat(question, history, { token, signal, onDelta }) {
   let response
-  try { response = await fetch('/api/v1/content/ask/stream', { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ question, history }) }) } catch (error) {
+  try { response = await fetch(apiUrl('/content/ask/stream'), { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ question, history }) }) } catch (error) {
     if (error.name === 'AbortError') throw error
     throw new Error('暂时连接不上梅梅，请检查网络后重试。')
   }

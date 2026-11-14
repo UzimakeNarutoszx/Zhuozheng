@@ -5,6 +5,10 @@ from typing import Literal
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
 
+# Keep in sync with web/src/data/garden-points.js. The backend intentionally owns
+# no garden data, so it only accepts this small whitelist (or an empty marker).
+GARDEN_POINT_IDS = frozenset({'water', 'bridge', 'plant', 'hall', 'window'})
+
 
 class Phone(BaseModel):
     phone: str = Field(pattern=r'^1[3-9]\d{9}$')
@@ -38,8 +42,19 @@ class WorkRequest(BaseModel):
     scale: float = Field(default=1, ge=0.1, le=10, allow_inf_nan=False)
     offset: dict[str, float] = Field(default_factory=lambda: {'x': 0, 'y': 0})
     createdAt: int = Field(default=0, ge=0)
+    pointId: str = Field(default='', max_length=64)
     imageDataUrl: str = Field(min_length=1, max_length=4_000_000)
     sourceImageDataUrl: str = Field(default='', max_length=4_000_000)
+
+    @field_validator('pointId')
+    @classmethod
+    def valid_point_id(cls, value):
+        # Old works and works without a marker keep an empty string; anything
+        # else must be a garden point the frontend actually renders.
+        value = value.strip()
+        if value and value not in GARDEN_POINT_IDS:
+            raise ValueError('unknown garden point')
+        return value
 
     @field_validator('offset')
     @classmethod

@@ -1,10 +1,22 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { markdownNodes, streamBlocks } from '../src/utils/markdown.js'
-import { chatHistory, streamChat } from '../src/utils/api.js'
+import { apiRequest, apiUrl, chatHistory, streamChat } from '../src/utils/api.js'
 import { createTextReveal } from '../src/utils/text-reveal.js'
 
 function flatten(nodes) { return nodes.flatMap(node => [node, ...flatten(node.children || [])]) }
+
+test('API paths stay within the deployed garden prefix for ordinary and streaming requests', async () => {
+  assert.equal(apiUrl('/profile/me', '/garden/'), '/garden/api/v1/profile/me')
+  assert.equal(apiUrl('/content/ask/stream', '/garden/'), '/garden/api/v1/content/ask/stream')
+  const original = globalThis.fetch, urls = []
+  globalThis.fetch = async url => { urls.push(url); return new Response('{}', { headers: { 'Content-Type': 'application/json' } }) }
+  try {
+    await apiRequest('/profile/me')
+    await streamChat('框景', [], { token: 'test', onDelta() {} })
+    assert.deepEqual(urls, [apiUrl('/profile/me'), apiUrl('/content/ask/stream')])
+  } finally { globalThis.fetch = original }
+})
 
 test('website streaming formats completed paragraphs and keeps fenced blank lines in the live block', () => {
   assert.deepEqual(streamBlocks('## 标题\n\n**还在增长**'), ['## 标题', '**还在增长**'])

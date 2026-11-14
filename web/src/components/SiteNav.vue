@@ -2,7 +2,7 @@
 import { assetUrl } from '../utils/assets.js'
 defineProps({ current: String })
 const emit = defineEmits(['navigate'])
-const items = [{ id: 'home', label: '游园' }, { id: 'methods', label: '手法' }, { id: 'studio', label: '创作' }, { id: 'community', label: '园友' }, { id: 'ask', label: '梅梅问答' }, { id: 'mine', label: '我的' }]
+const items = [{ id: 'home', label: '游园' }, { id: 'methods', label: '手法' }, { id: 'studio', label: '创作' }, { id: 'community', label: '园友' }, { id: 'ask', label: '梅梅问答' }, { id: 'archive', label: '研学' }, { id: 'mine', label: '我的' }]
 </script>
 <template><header class="site-nav"><button class="brand" @click="emit('navigate', 'home')"><img class="brand-icon" :src="assetUrl('/garden-mark-64.png')" alt=""><span>邂逅拙政巧景，若见江南芳华</span></button><nav aria-label="主导航"><button v-for="item in items" :key="item.id" :class="{ active: current === item.id || (current === 'login' && item.id === 'mine') }" :aria-current="current === item.id ? 'page' : undefined" @click="emit('navigate', item.id)">{{ item.label }}</button></nav></header></template>
 <style scoped>

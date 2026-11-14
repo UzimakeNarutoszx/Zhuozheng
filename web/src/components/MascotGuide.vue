@@ -6,17 +6,21 @@ import { createMascotReveal } from '../data/mascots.js'
 
 const props = defineProps({
   mascot: { type: Object, required: true },
-  placement: { type: String, default: 'edge' }
+  placement: { type: String, default: 'edge' },
+  // 首页/我的等重内容页面可以延迟创建 3D，让正文和列表先绘制。
+  modelDelay: { type: Number, default: 0 }
 })
 const emit = defineEmits(['navigate'])
 const messageIndex = ref(0)
 const open = ref(false)
 // placeholder → (revealed | fallback | failed)；失败也不会移除静态图，只是不再切 3D。
 const sceneState = ref('placeholder')
+const showModel = ref(props.modelDelay <= 0)
 const revealed = computed(() => sceneState.value === 'revealed')
 // 先渲染 mascot.asset 静态图（固定尺寸），3D ready 后再淡入覆盖；超时/失败一直保留静态图。
 const revealState = computed(() => !props.mascot.model ? 'image' : sceneState.value === 'placeholder' ? 'still' : sceneState.value === 'revealed' ? '3d' : sceneState.value)
 const message = computed(() => props.mascot.messages[messageIndex.value % props.mascot.messages.length])
+const stage = ref(null)
 let reveal = null
 let earlyReady = false
 let earlyFailure = false
@@ -27,33 +31,46 @@ function toggle() {
   else open.value = true
 }
 function navigate() { if (props.mascot.target) { emit('navigate', props.mascot.target); open.value = false } }
+// 3D 失败后用户主动重试：先让展示状态机退回占位（静态图），再让 RoundWindow3D 重新加载。
+function retryThree() {
+  reveal?.retry()
+  stage.value?.retry()
+}
 // 子组件可能在父组件 mounted 之前就 ready/失败，先记下来，状态机建好后补发。
 function onThreeReady() { if (reveal) reveal.ready(); else earlyReady = true }
 function onThreeError() { if (reveal) reveal.fail(); else earlyFailure = true }
 
-onMounted(() => {
+let modelTimer = 0
+function startReveal() {
   if (!props.mascot.model) return
   reveal = createMascotReveal({ onChange: state => { sceneState.value = state } })
   reveal.start()
   if (earlyFailure) reveal.fail()
   else if (earlyReady) reveal.ready()
+}
+onMounted(() => {
+  if (!props.mascot.model) return
+  if (showModel.value) { startReveal(); return }
+  modelTimer = setTimeout(() => { showModel.value = true; startReveal() }, props.modelDelay)
 })
-onBeforeUnmount(() => { reveal?.dispose(); reveal = null })
+onBeforeUnmount(() => { clearTimeout(modelTimer); reveal?.dispose(); reveal = null })
 </script>
 
 <template>
-  <aside :class="['mascot-guide', `mascot-guide--${placement}`, { 'is-open': open }]">
+  <aside :class="['mascot-guide', `mascot-guide--${placement}`, { 'is-open': open }]" :data-model="mascot.model || 'none'" :data-reveal="revealState">
     <div v-if="open" class="mascot-guide__copy">
       <span class="mascot-guide__name">{{ mascot.name }}</span>
       <p aria-live="polite">{{ message }}</p>
+      <p v-if="revealState === 'failed'" class="mascot-guide__hint" role="status">动态形象暂时没加载出来，先陪你看看静态的样子。</p>
       <div class="mascot-guide__actions">
         <button v-if="mascot.target && mascot.actionLabel" class="mascot-guide__action" type="button" @click="navigate">{{ mascot.actionLabel }} <span aria-hidden="true">↗</span></button>
+        <button v-if="mascot.model && revealState === 'failed'" class="mascot-guide__action mascot-guide__retry" type="button" @click="retryThree">重试动态形象</button>
         <button class="mascot-guide__close" type="button" aria-label="收起吉祥物提示" @click="open = false">收起</button>
       </div>
     </div>
-    <component :is="mascot.model ? 'div' : 'button'" class="mascot-guide__figure" :data-reveal="revealState" :type="mascot.model ? undefined : 'button'" :aria-label="mascot.model ? undefined : open ? `${mascot.name}：点击换一句提示` : `${mascot.name}：展开导览提示`" :aria-expanded="mascot.model ? undefined : open" @click="toggle">
+    <component :is="mascot.model ? 'div' : 'button'" class="mascot-guide__figure" :data-reveal="revealState" :data-model="mascot.model || 'none'" :type="mascot.model ? undefined : 'button'" :aria-label="mascot.model ? undefined : open ? `${mascot.name}：点击换一句提示` : `${mascot.name}：展开导览提示`" :aria-expanded="mascot.model ? undefined : open" @click="toggle">
       <img class="mascot-guide__still" :class="{ 'is-hidden': revealed }" :src="assetUrl(mascot.asset)" :alt="mascot.alt" :aria-hidden="revealed ? 'true' : undefined" decoding="async">
-      <RoundWindow3D v-if="mascot.model" :key="mascot.model" class="mascot-guide__stage" :class="{ 'is-visible': revealed }" :inert="revealed ? undefined : 'true'" :character="mascot.model" :preview="false" compact @ready="onThreeReady" @error="onThreeError" />
+      <RoundWindow3D v-if="mascot.model && showModel" ref="stage" :key="mascot.model" class="mascot-guide__stage" :class="{ 'is-visible': revealed }" :inert="revealed ? undefined : 'true'" :character="mascot.model" :preview="false" compact @ready="onThreeReady" @error="onThreeError" />
     </component>
   </aside>
 </template>
@@ -81,9 +98,11 @@ onBeforeUnmount(() => { reveal?.dispose(); reveal = null })
 .mascot-guide__copy { position:absolute; z-index:3; right:142px; bottom:16px; width:min(220px, calc(100vw - 162px)); padding:12px 14px; background:rgba(238,229,212,.97); border:1px solid rgba(23,58,54,.14); box-shadow:0 8px 24px rgba(23,58,54,.12); pointer-events:auto; animation:mascot-bubble-in .22s cubic-bezier(.2,.8,.2,1) both; }
 .mascot-guide__name { display:block; color:var(--clay); font:600 11px/1.4 system-ui,sans-serif; letter-spacing:.08em; }
 .mascot-guide__copy p { margin:6px 0 10px; color:var(--ink); font-size:13px; line-height:1.55; }
-.mascot-guide__actions { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.mascot-guide__copy .mascot-guide__hint { margin-top:-2px; color:var(--ink-soft); font-size:12px; }
+.mascot-guide__actions { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
 .mascot-guide__action { border:0; padding:0; background:none; color:var(--clay); font:600 12px/1.4 system-ui,sans-serif; }
 .mascot-guide__action span { display:inline-block; transform:translateY(.08em); }
+.mascot-guide__retry { color:var(--ink-soft); }
 .mascot-guide__close { border:0; padding:6px 8px; color:var(--ink-soft); background:rgba(23,58,54,.06); cursor:pointer; font:11px system-ui,sans-serif; }
 @keyframes mascot-breathe { 0%,100% { transform:translateY(0) rotate(-3deg); } 50% { transform:translateY(-3px) rotate(-2.2deg); } }
 @keyframes mascot-bubble-in { from { opacity:0; transform:translateX(8px); } to { opacity:1; transform:translateX(0); } }

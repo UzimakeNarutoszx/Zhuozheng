@@ -1,6 +1,8 @@
 <script setup>
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { community, formatDate, likePop, methodFilters, methodLabel, shareUrl } from '../utils/community.js'
+import { assetUrl } from '../utils/assets.js'
+function goCommunity(id = '') { window.location.hash = id ? `community/${encodeURIComponent(id)}` : 'community' }
 const props = defineProps({ user: Object, token: String, communityId: String })
 const emit = defineEmits(['navigate', 'session-expired'])
 
@@ -20,6 +22,7 @@ async function loadFeed(more = false) {
 
 // ---- detail ----
 const work = ref(null), detailLoading = ref(false), detailError = ref(''), comments = ref([]), commentsCursor = ref(null), draft = ref(''), posting = ref(false), notice = ref(''), liking = ref(new Set())
+const savingFavorites = ref(new Set())
 let detailVersion = 0
 async function loadDetail(id) {
   const version = ++detailVersion
@@ -37,6 +40,19 @@ async function moreComments() {
 }
 function requireLogin() { if (props.user) return true; emit('navigate', 'login'); return false }
 function failed(error) { notice.value = error.message; if (error.status === 401) emit('session-expired') }
+
+async function toggleFavorite(target) {
+  if (!requireLogin() || savingFavorites.value.has(target.id)) return
+  const next = !target.favoritedByMe
+  savingFavorites.value = new Set([...savingFavorites.value, target.id])
+  try {
+    const result = await community.favorite(target.id, next, props.token)
+    target.favoritedByMe = result.favorited
+    const card = items.value.find(item => item.id === target.id)
+    if (card) card.favoritedByMe = result.favorited
+  } catch (error) { failed(error); if (!props.communityId) feedError.value = error.message }
+  finally { const rest = new Set(savingFavorites.value); rest.delete(target.id); savingFavorites.value = rest }
+}
 
 async function toggleLike(target, event) {
   if (!requireLogin() || liking.value.has(target.id)) return
@@ -102,10 +118,11 @@ watch(() => props.communityId, id => { if (id) loadDetail(id); else if (!items.v
       <p v-if="feedError" class="cloud-error" role="alert">{{ feedError }} <button class="text-link" type="button" @click="loadFeed()">重新加载</button></p>
       <div v-if="items.length" class="community-grid">
         <article v-for="item in items" :key="item.id" class="community-card">
-          <a class="community-thumb" :href="`#community/${item.id}`" :aria-label="`查看《${item.title}》`"><img :src="item.thumbUrl" :alt="item.title" loading="lazy" decoding="async"></a>
+          <a class="community-thumb" :href="`#community/${item.id}`" :aria-label="`查看《${item.title}》`" @click.prevent="goCommunity(item.id)"><img :src="assetUrl(item.thumbUrl)" :alt="item.title" loading="lazy" decoding="async"></a>
           <div class="community-card-body">
             <span class="eyebrow">{{ methodLabel(item.methodId) }}</span>
-            <h3><a :href="`#community/${item.id}`">{{ item.title }}</a></h3>
+            <h3><a :href="`#community/${item.id}`" @click.prevent="goCommunity(item.id)">{{ item.title }}</a></h3>
+            <button type="button" class="text-link" :aria-pressed="!!item.favoritedByMe" :disabled="savingFavorites.has(item.id)" @click="toggleFavorite(item)">{{ item.favoritedByMe ? '★ 已收藏' : '☆ 收藏' }}</button>
             <div class="community-meta"><span>{{ item.author.nickname }} · {{ formatDate(item.publishedAt) }}</span><span class="community-stats"><button type="button" :class="['like-button', { liked: item.likedByMe }]" :aria-pressed="item.likedByMe" :aria-label="item.likedByMe ? '取消喜欢' : '喜欢'" :disabled="liking.has(item.id)" @click="toggleLike(item, $event)"><span class="like-mark" aria-hidden="true">{{ item.likedByMe ? '♥' : '♡' }}</span><span class="num">{{ item.likeCount }}</span></button><span class="comment-count"><span aria-hidden="true">◌</span> <span class="num">{{ item.commentCount }}</span><span class="sr-only">条评论</span></span></span></div>
           </div>
         </article>
@@ -116,11 +133,11 @@ watch(() => props.communityId, id => { if (id) loadDetail(id); else if (!items.v
     </template>
 
     <template v-else>
-      <a class="back-link" href="#community"><span aria-hidden="true">←</span>回到园友作品</a>
+      <a class="back-link" href="#community" @click.prevent="goCommunity()"><span aria-hidden="true">←</span>回到园友作品</a>
       <p v-if="detailLoading" class="community-status" role="status">正在打开作品…</p>
       <div v-else-if="detailError" class="empty-state"><span class="empty-mark">○</span><h3>{{ detailError }}</h3><p>作品可能已被作者撤回，或仍在审核中。</p></div>
       <article v-else-if="work" class="community-detail">
-        <figure class="community-figure"><img :src="work.imageUrl" :alt="work.title"></figure>
+        <figure class="community-figure"><img :src="assetUrl(work.imageUrl)" :alt="work.title"></figure>
         <div class="community-side">
           <p v-if="work.reviewStatus !== 'approved'" class="review-banner" role="status">{{ work.reviewStatus === 'pending' ? '审核中：只有你和管理员能看到这幅作品。' : `未通过审核：${work.rejectReason}` }}</p>
           <span class="eyebrow">{{ methodLabel(work.methodId) }}</span>
@@ -128,6 +145,7 @@ watch(() => props.communityId, id => { if (id) loadDetail(id); else if (!items.v
           <p class="community-byline">{{ work.author.nickname }} · {{ formatDate(work.publishedAt) || '尚未公开' }}</p>
           <p v-if="work.note" class="community-note">{{ work.note }}</p>
           <div v-if="work.reviewStatus === 'approved'" class="community-actions">
+            <button type="button" class="secondary-button" :aria-pressed="!!work.favoritedByMe" :disabled="savingFavorites.has(work.id)" @click="toggleFavorite(work)">{{ work.favoritedByMe ? '★ 已收藏' : '☆ 收藏作品' }}</button>
             <button type="button" :class="['like-button', 'like-large', { liked: work.likedByMe }]" :aria-pressed="work.likedByMe" :disabled="liking.has(work.id)" @click="toggleLike(work, $event)"><span class="like-mark" aria-hidden="true">{{ work.likedByMe ? '♥' : '♡' }}</span>{{ work.likedByMe ? '已喜欢' : '喜欢' }} <span class="num">{{ work.likeCount }}</span></button>
             <button type="button" :class="['secondary-button', 'copy-button', { copied }]" @click="share"><span aria-hidden="true">{{ copied ? '✓' : '↗' }}</span> {{ copied ? '链接已复制' : '分享' }}</button>
             <button type="button" class="text-link" @click="report('work', work.id)">举报</button>
@@ -176,6 +194,7 @@ watch(() => props.communityId, id => { if (id) loadDetail(id); else if (!items.v
 .like-button.liked, .like-button.liked .like-mark { color:var(--clay); }
 .like-mark { display:inline-block; font-size:1.15em; line-height:1; transform:translateY(.125em); }
 .like-large { min-height:48px; padding:12px 18px; background:rgba(23,58,54,.04); font-size:14px; font-weight:600; }
+.like-large .like-mark { transform:none; }
 .community-status { color:var(--ink-soft); font-size:14px; margin:24px 0; }
 .community-more { display:flex; justify-content:center; margin-top:40px; }
 .community-detail { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(300px,.9fr); gap:56px; margin-top:28px; align-items:start; }

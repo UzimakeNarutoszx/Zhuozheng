@@ -1,9 +1,9 @@
 export const jiangnanPhotos = [
-  { src: '/assets/jiangnan/photos/scene-01.jpg', alt: '江南研学实地观察照片', label: '现场观察 01' },
-  { src: '/assets/jiangnan/photos/scene-02.jpg', alt: '江南研学园林景观照片', label: '现场观察 02' },
-  { src: '/assets/jiangnan/photos/scene-03.jpg', alt: '江南研学建筑细节照片', label: '现场观察 03' },
-  { src: '/assets/jiangnan/photos/scene-04.jpg', alt: '江南研学窗景照片', label: '现场观察 04' },
-  { src: '/assets/jiangnan/photos/scene-05.jpg', alt: '江南研学水院照片', label: '现场观察 05' }
+  { src: '/assets/jiangnan/photos/reading/scene-01.webp', alt: '江南研学实地观察照片', label: '现场观察 01' },
+  { src: '/assets/jiangnan/photos/reading/scene-02.webp', alt: '江南研学园林景观照片', label: '现场观察 02' },
+  { src: '/assets/jiangnan/photos/reading/scene-03.webp', alt: '江南研学建筑细节照片', label: '现场观察 03' },
+  { src: '/assets/jiangnan/photos/reading/scene-04.webp', alt: '江南研学窗景照片', label: '现场观察 04' },
+  { src: '/assets/jiangnan/photos/reading/scene-05.webp', alt: '江南研学水院照片', label: '现场观察 05' }
 ]
 
 export const jiangnanWorks = [

@@ -1,5 +1,5 @@
-const pages = new Set(['home', 'methods', 'method-detail', 'explore', 'studio', 'archive', 'mine', 'login', 'ask', 'community'])
-const mineTabs = ['about', 'records', 'review']
+const pages = new Set(['home', 'methods', 'method-detail', 'explore', 'studio', 'archive', 'mine', 'login', 'ask', 'community', 'reading'])
+const mineTabs = ['about', 'records', 'review', 'favorites']
 
 export function parseHash(hash = '') {
   const value = hash.replace(/^#/, '').trim()
