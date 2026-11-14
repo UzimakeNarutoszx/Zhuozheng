@@ -13,7 +13,9 @@ import GardenComposition from './components/GardenComposition.vue'
 import ComparisonView from './components/ComparisonView.vue'
 import CommunityPage from './components/CommunityPage.vue'
 import MascotGuide from './components/MascotGuide.vue'
+import RoutesView from './components/RoutesView.vue'
 import { methods, getMethod } from './data/methods.js'
+import { isRoutesHash } from './data/routes.js'
 import { cases } from './data/cases.js'
 import { jiangnanPhotos, jiangnanWorks, jiangnanMaterials } from './data/jiangnan.js'
 import { mascots, mascotCoin } from './data/mascots.js'
@@ -39,6 +41,7 @@ const currentMethod = computed(() => getMethod(selectedMethod.value))
 const currentMascot = computed(() => ['methods', 'method-detail'].includes(page.value) || (page.value === 'mine' && mineTab.value === 'about') ? mascotCoin : page.value === 'studio' ? mascots.ice : page.value === 'explore' ? mascots.flower : mascots.round)
 const mascotPlacement = computed(() => page.value === 'mine' || page.value === 'explore' || page.value === 'methods' ? 'left' : page.value === 'studio' ? 'right-mid' : 'right-bottom')
 function applyLocation() {
+  if (isRoutesHash(window.location.hash)) { page.value = 'routes'; window.scrollTo({ top: 0, behavior: 'smooth' }); return }
   const location = parseHash(window.location.hash)
   page.value = location.page
   if (location.mineTab) mineTab.value = location.mineTab
@@ -87,7 +90,7 @@ onBeforeUnmount(() => { window.removeEventListener('popstate', applyLocation); w
     <main>
       <section v-if="page === 'home'" class="page home-page">
         <div class="hero">
-          <div class="hero-copy"><span class="eyebrow">A FIELD GUIDE TO GARDEN VIEWS</span><h1>拙政观景，<br><em>看见景色如何发生。</em></h1><p class="hero-slogan">邂逅拙政巧景，若见江南芳华</p><p>拙政园把有限的园墙变成了无尽的视线。跟着五种造景手法，走近一扇窗、一座桥和一片水面。</p><div class="hero-actions"><button class="primary-button" @click="navigate('explore')">开始游园 <span>↗</span></button><button class="secondary-button" @click="navigate('methods')">先读懂手法</button></div></div>
+          <div class="hero-copy"><span class="eyebrow">A FIELD GUIDE TO GARDEN VIEWS</span><h1>拙政观景，<br><em>看见景色如何发生。</em></h1><p class="hero-slogan">邂逅拙政巧景，若见江南芳华</p><p>拙政园把有限的园墙变成了无尽的视线。跟着五种造景手法，走近一扇窗、一座桥和一片水面。</p><div class="hero-actions"><button class="primary-button" @click="navigate('explore')">开始游园 <span>↗</span></button><button class="secondary-button" @click="navigate('methods')">先读懂手法</button><button class="secondary-button" @click="navigate('routes')">园内路线</button></div></div>
           <div class="hero-image"><ImageMotion src="/assets/garden/garden-001.jpg" alt="拙政园水院与建筑" eager /><span class="image-credit">King of Hearts / Wikimedia Commons · CC BY-SA 4.0</span></div>
         </div>
         <section class="promo-video-section" aria-labelledby="promo-video-title">
@@ -111,6 +114,8 @@ onBeforeUnmount(() => { window.removeEventListener('popstate', applyLocation); w
       <section v-else-if="page === 'method-detail'" class="page detail-page"><div class="detail-topline"><button class="back-link" @click="navigate('methods')"><span aria-hidden="true">←</span> 返回手法</button><span class="detail-count">FIELD NOTE / 0{{ methods.findIndex(item => item.id === currentMethod.id) + 1 }}</span></div><div class="detail-hero"><div class="detail-intro"><span class="eyebrow">{{ currentMethod.pinyin }}</span><h1>{{ currentMethod.name }}</h1><p class="lead">{{ currentMethod.summary }}</p></div><figure class="detail-reference"><ImageMotion :src="currentMethod.image" :alt="currentMethod.imageAlt" class-name="detail-motion" :motion="false" eager /><figcaption><strong>{{ currentMethod.imageTitle }}</strong><span>{{ currentMethod.imageCaption }}</span><small>江南研学小组 · 现场摄影</small></figcaption></figure></div><article class="detail-body"><div class="observation-box"><div><span class="eyebrow">现场观察</span><strong>先停下来，再看见。</strong></div><p>{{ currentMethod.observe }}</p></div><div class="detail-reading"><div><span class="eyebrow">构景解析</span><h2>景色如何被组织</h2></div><p>{{ currentMethod.detail }}</p></div><GardenComposition :method="currentMethod" /><div class="detail-actions"><button class="primary-button" @click="startStudio()">用这个思路创作 <span>↗</span></button><button class="secondary-button" @click="navigate('explore')">回到游园图</button></div><div class="source-note">内容为面向公众的观察性整理，图片来源见<a href="#sources" @click.prevent="navigate('mine', 'about')">资料说明</a>。</div></article></section>
 
       <section v-else-if="page === 'explore'" class="page"><div class="section-head page-heading"><div><span class="eyebrow">OBSERVATION WALK</span><h1>游园观察</h1></div><p>不需要记住所有名字，只要找到视线的变化。</p></div><GardenMap @open="openMethod" /></section>
+
+      <section v-else-if="page === 'routes'" class="page"><RoutesView @open-method="openMethod" /></section>
 
       <section v-else-if="page === 'archive'" class="page archive-page"><div class="section-head page-heading"><div><span class="eyebrow">JIANGNAN FIELD ARCHIVE</span><h1>研学档案</h1></div><p>八年级江南研学小组的照片、作品与研究报告。</p></div><div class="archive-intro"><div><h2>从现场出发，<br>再回到一扇窗。</h2></div><p>研究报告把一次游园拆成了可复用的方法：查资料、带着问题观察、拍摄与测量，最后把发现整理成文字和设计。下面的材料可以直接作为继续观察拙政园的入口。</p></div><div class="archive-block"><div class="section-head"><div><span class="eyebrow">FIELD PHOTOGRAPHS</span><h2>现场照片</h2></div><span class="archive-meta">精选 05 张</span></div><div class="archive-photo-grid"><figure v-for="photo in jiangnanPhotos" :key="photo.src"><ImageMotion :src="photo.src" :alt="photo.alt" :motion="false" sizes="(max-width: 560px) 50vw, (max-width: 900px) 33vw, 20vw" /><figcaption>{{ photo.label }}</figcaption></figure></div></div><div class="archive-block"><div class="section-head"><div><span class="eyebrow">STUDENT WORKS</span><h2>学生成果</h2></div><span class="archive-meta">设计 · 资料 · 摄影</span></div><div class="archive-work-grid"><article v-for="work in jiangnanWorks" :key="work.src"><ImageMotion :src="work.src" :alt="work.alt" :motion="false" sizes="(max-width: 560px) 100vw, (max-width: 900px) 50vw, 25vw" /><div><h3>{{ work.title }}</h3><p>{{ work.author }}</p></div></article></div></div><div class="archive-block material-block"><div class="section-head"><div><span class="eyebrow">READING MATERIALS</span><h2>研究报告与材料</h2></div></div><div class="material-list"><a v-for="material in jiangnanMaterials" :key="material.title" :href="assetUrl(material.file)" download><span class="material-type">{{ material.type }}</span><strong>{{ material.title }}</strong><p>{{ material.detail }}</p><span class="material-link">打开材料 ↗</span></a></div></div></section>
 

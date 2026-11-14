@@ -48,3 +48,49 @@ export const mascotCoin = {
   target: 'methods',
   actionLabel: '去看造景手法'
 }
+
+// 吉祥物展示状态机：静态图先出现（占位），3D 模型 ready 后延迟 readyDelay 毫秒淡入。
+// 2.5s 内没准备好就进入 fallback：静态图继续保留，不会闪空；之后模型若迟到但仍能 ready，
+// 仍然可以平滑升级成 3D。只有加载失败 / WebGL 不可用才是终态，永久保留静态图。
+// 纯逻辑 + 可注入计时器，便于在 node:test 里测 ready / 超时 / 失败分支。
+export const MASCOT_REVEAL_DELAY = 200
+export const MASCOT_REVEAL_TIMEOUT = 2500
+
+export function createMascotReveal({
+  readyDelay = MASCOT_REVEAL_DELAY,
+  timeout = MASCOT_REVEAL_TIMEOUT,
+  schedule = (fn, ms) => setTimeout(fn, ms),
+  cancel = id => clearTimeout(id),
+  onChange = () => {}
+} = {}) {
+  let state = 'placeholder' // placeholder → revealed | fallback(timeout) → revealed；failed 为终态
+  let timeoutId = null
+  let revealId = null
+  const clear = id => { if (id !== null) cancel(id) }
+  const clearTimers = () => { clear(timeoutId); timeoutId = null; clear(revealId); revealId = null }
+  const apply = next => {
+    state = next
+    clearTimers()
+    onChange(state)
+  }
+  return {
+    get state() { return state },
+    // 组件挂载后启动看门狗：超时仍没 ready 就先标记 fallback，静态图继续展示
+    start() {
+      if (state !== 'placeholder' || timeoutId !== null) return
+      timeoutId = schedule(() => { timeoutId = null; if (state === 'placeholder') apply('fallback') }, timeout)
+    },
+    // 3D 模型就绪：过关后再等 readyDelay 淡入，避免模型刚 ready 第一帧闪空
+    ready() {
+      if (state === 'failed' || state === 'revealed' || revealId !== null) return
+      clear(timeoutId); timeoutId = null
+      revealId = schedule(() => { revealId = null; if (state !== 'failed') apply('revealed') }, readyDelay)
+    },
+    // 加载失败 / WebGL 不可用：终态回退静态图（若已淡入过 3D 也会退回静态图）
+    fail() { if (state !== 'failed') apply('failed') },
+    dispose() {
+      clearTimers()
+      onChange = () => {}
+    }
+  }
+}

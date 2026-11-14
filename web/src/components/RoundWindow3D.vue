@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { assetUrl } from '../utils/assets.js'
 
-const props = defineProps({ speaking: Boolean, compact: Boolean, character: { type: String, default: 'round' } })
+const props = defineProps({ speaking: Boolean, compact: Boolean, preview: { type: Boolean, default: true }, character: { type: String, default: 'round' } })
+const emit = defineEmits(['ready', 'error'])
 const characters = {
   round: { name: '梅梅', file: 'round-window' },
   coin: { name: '钱钱', file: 'coin-window' },
@@ -22,16 +23,22 @@ function sayHello() {
 }
 watch(() => props.speaking, speaking => { if (speaking) stopGreeting() })
 
-onMounted(async () => {
-  const conn = navigator.connection || {}
-  if (conn.saveData || /(^|-)(2g|3g)/.test(conn.effectiveType || '')) return
-  // 让首屏先渲染：空闲（或最多 1.6s）后再加载 three.js 与 GLB
-  await new Promise(resolve => {
+// 不阻塞首屏：等浏览器画出第一帧再开始下载 Three.js（动态 import）和模型。
+// compact 是右下角导览吉祥物，首屏就要准备 3D，所以只等两帧；大图角色继续等空闲。
+function waitBeforeLoading(compact) {
+  if (compact) return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  return new Promise(resolve => {
     let done = false
     const finish = () => { if (!done) { done = true; resolve() } }
-    const timer = setTimeout(finish, 1600)
-    if (window.requestIdleCallback) requestIdleCallback(() => { clearTimeout(timer); finish() }, { timeout: 2600 })
+    const timer = setTimeout(finish, 500)
+    if (window.requestIdleCallback) requestIdleCallback(() => { clearTimeout(timer); finish() }, { timeout: 800 })
   })
+}
+
+onMounted(async () => {
+  const conn = navigator.connection || {}
+  if (conn.saveData || /(^|-)(2g|3g)/.test(conn.effectiveType || '')) { emit('error'); return }
+  await waitBeforeLoading(props.compact)
   let disposed = false
   let renderer, resize, observer, mixer, frame = 0, model
   const resources = new Set()
@@ -98,7 +105,7 @@ onMounted(async () => {
     host.value.addEventListener('pointerleave', () => { hoverX = 0 })
     host.value.addEventListener('pointerenter', () => { if (!props.speaking && !greeting.value) greet() })
     renderer.domElement.addEventListener('webglcontextlost', event => {
-      event.preventDefault(); ready.value = false; unavailable.value = true; cleanup()
+      event.preventDefault(); ready.value = false; unavailable.value = true; emit('error'); cleanup()
     })
     const gltf = await new GLTFLoader().loadAsync(assetUrl(`/assets/models/${character.value.file}.glb`))
     model = gltf.scene
@@ -116,7 +123,9 @@ onMounted(async () => {
       const hello = gltf.animations.find(clip => clip.name === 'Greeting')
       if (hello) greetingAction = mixer.clipAction(hello).setLoop(THREE.LoopOnce, 1)
     }
+    renderer.render(scene, camera)
     ready.value = true
+    emit('ready')
     greet()
     const tick = now => {
       frame = requestAnimationFrame(tick)
@@ -146,7 +155,7 @@ onMounted(async () => {
     }
     frame = requestAnimationFrame(tick)
   } catch {
-    if (!disposed) { unavailable.value = true; ready.value = false; cleanup() }
+    if (!disposed) { unavailable.value = true; ready.value = false; emit('error'); cleanup() }
   }
 })
 onBeforeUnmount(() => { clearTimeout(fallbackTimer); cleanup() })
@@ -155,7 +164,7 @@ onBeforeUnmount(() => { clearTimeout(fallbackTimer); cleanup() })
 <template>
   <div class="round-window-3d" :data-character="props.character" :class="{ 'is-ready': ready, 'is-greeting': greeting, 'is-compact': compact }">
     <button ref="host" class="character-stage" type="button" :aria-label="`和${character.name}打个招呼`" @click="sayHello">
-      <img v-if="!ready" :src="assetUrl(`/assets/models/${character.file}-preview.webp`)" :alt="`按原稿制作的立体${character.name}伙伴`" decoding="async">
+      <img v-if="!ready && preview" :src="assetUrl(`/assets/models/${character.file}-preview.webp`)" :alt="`按原稿制作的立体${character.name}伙伴`" decoding="async">
     </button>
     <div v-if="!compact" class="character-controls">
       <span class="character-caption" role="status">{{ unavailable ? `${character.name}在这里陪你` : speaking ? '我在认真想你的问题…' : greeting ? '你好呀，一起看看园林吧！' : '点点我，我会和你打招呼' }}</span>
